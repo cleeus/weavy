@@ -2,8 +2,8 @@
 
 import sys
 import os
-from os import path
 import shutil
+import datetime
 
 def log(string):
     print string
@@ -41,28 +41,28 @@ class MicroTemplateEngine:
 
 class FolderLocator:
     def __init__(self):
-        self.in_dir = path.abspath('.')
+        self.in_dir = os.path.abspath('.')
         blog_dir = '%s/blog/' % self.in_dir
         pages_dir = '%s/pages/' % self.in_dir
         template_dir = '%s/template/' % self.in_dir
         out_dir = '%s/out/' % self.in_dir
 
-        if  path.isdir(blog_dir):
+        if  os.path.isdir(blog_dir):
             self.blog_dir = blog_dir
         else:
             raise WeavyError('blog dir (%s) not found' % blog_dir)
 
-        if path.isdir(pages_dir):
+        if os.path.isdir(pages_dir):
             self.pages_dir = pages_dir
         else:
             raise WeavyError('pages dir (%s) not found' % pages_dir)
 
-        if path.isdir(template_dir):
+        if os.path.isdir(template_dir):
             self.template_dir = template_dir
         else:
             raise WeavyError('template dir (%s) not found' % template_dir)
 
-        if path.isdir(out_dir):
+        if os.path.isdir(out_dir):
             self.out_dir = out_dir
         else:
             raise WeavyError('out dir (%s) not found' % out_dir)
@@ -86,21 +86,45 @@ class FolderLocator:
 class DirectoryLister:
     def __init__(self, directory):
         self.directory = directory
+        self.files = []
+        self.dirs = []
 
     def collect(self):
-        pass
+        for dirpath, dirnames, filenames in os.walk(self.directory):
+            self.dirs = []
+            self.files = []
+            for dirname in dirnames:
+                self.dirs.append( os.path.join(dirpath, dirname) )
+            for filename in filenames:
+                self.files.append( os.path.join(dirpath, filename) )
+        
 
-    def get_files(self):
-        pass
+    def get_files(self, relative=True):
+        if not relative:
+            return self.files
+        else:
+            return self.__make_relative(self.files)
+
+    def get_dirs(self, relative=True):
+        if not relative:
+            return self.dirs
+        return self.__make_relative(self.dirs)
+
+    def __make_relative(self, names):
+        return [ x[len(self.directory):] for x in names ]
 
 class BlogPost:
     def __init__(self):
         self.name = "" #relative path minus file ending
         self.title = "" #a title from the metadata
-        self.date = 0  #unix time stamp
+        self.created = None #datetime.datetime object
+        self.last_updated = None #datetime.datetime object
         self.content = "" #the raw content
         self.renderas = "html" #the rendering to use on the content (html/markdown/...)
 
+    def __str__(self):
+        return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
+                (self.name, self.title, self.created, self.last_updated, self.renderas)
 
 class BlogDataSource:
     def __init__(self, blog_dir):
@@ -110,19 +134,49 @@ class BlogDataSource:
     def load_data(self):
         dirlst = DirectoryLister(self.blog_dir)
         dirlst.collect()
-
-        
-        pass
+        files = dirlst.get_files()
+        for filename in files:
+            post = self.__make_post(filename)
+            self.posts[post.name] = post
 
     def get_post(self, name):
-        ''' @param name the name of a blog post which is it's relative path minus the file ending
-                e.g. blog/2011/07/13/post_01
+        ''' @param name the name of a blog post
+                e.g. blog:2011/07/13/post_01
             @return a single BlogPosts element
         '''
         return self.posts[name]
 
     def get_posts(self):
         return [ v for _,v in self.posts.items() ]
+
+    def __make_post(self, filename):
+        post = BlogPost()
+        post.name = self.__name_from_filename(filename)
+        post.renderas = self.__renderas_from_filename(filename)
+        post.created = self.__datetime_from_filename(filename)
+        print post
+        return post
+
+    def __name_from_filename(self, filename):
+        fileext = os.path.splitext(filename)
+        name = 'blog:%s' % filename[:-len(fileext[1])]
+        return name
+
+    def __datetime_from_filename(self, filename):
+        datestr = os.path.dirname(filename)
+        datestr_parts = datestr.split(os.path.sep)
+        date = datetime.datetime(int(datestr_parts[0]), int(datestr_parts[1]), int(datestr_parts[2]))
+        return date 
+
+    def __renderas_from_filename(self, filename):
+        fileext = os.path.splitext(filename)
+        fileext = fileext[1].replace(".", "")
+        if fileext != "":
+            return fileext
+        else:
+            return "html"
+
+
 
 
 def erase_dir_contents(pathname):
