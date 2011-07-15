@@ -7,7 +7,7 @@ import datetime
 import re
 
 def log(string):
-    print string
+    sys.stdout.write(string + os.linesep)
 
 class WeavyError(Exception):
     pass
@@ -240,6 +240,17 @@ class BlogDataSource:
             
         return (key, value)
 
+class SiteRenderer:
+    def __init__(self, out_dir, blog_data_source, pages_data_source, micro_template_engine):
+        self.out_dir = out_dir
+        self.blog_data_source = blog_data_source
+        self.pages_data_source = pages_data_source
+        self.mte = micro_template_engine
+    
+    def render(self):
+        pass
+
+
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
     os.mkdir(pathname)
@@ -260,6 +271,12 @@ def main():
     blog_dir = floc.get_blog_dir()
     blog_data = BlogDataSource(blog_dir)
     blog_data.load_data()
+    
+    #TODO: load pages data
+
+    log('rendering site...')
+    siteR = SiteRenderer(out_dir, blog_data, None, mte)
+    siteR.render()
 
     return 0
 
