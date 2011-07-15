@@ -81,11 +81,48 @@ class FolderLocator:
 
     def get_pages_dir(self):
         return self.pages_dir
-     
-class BlogTransformation:
-    def __init__(self, in_dir, out_dir):
-        self.in_dir = in_dir
-        self.out_dir = out_dir
+
+
+class DirectoryLister:
+    def __init__(self, directory):
+        self.directory = directory
+
+    def collect(self):
+        pass
+
+    def get_files(self):
+        pass
+
+class BlogPost:
+    def __init__(self):
+        self.name = "" #relative path minus file ending
+        self.title = "" #a title from the metadata
+        self.date = 0  #unix time stamp
+        self.content = "" #the raw content
+        self.renderas = "html" #the rendering to use on the content (html/markdown/...)
+
+
+class BlogDataSource:
+    def __init__(self, blog_dir):
+        self.blog_dir = blog_dir
+        self.posts = {} #map name->post
+
+    def load_data(self):
+        dirlst = DirectoryLister(self.blog_dir)
+        dirlst.collect()
+
+        
+        pass
+
+    def get_post(self, name):
+        ''' @param name the name of a blog post which is it's relative path minus the file ending
+                e.g. blog/2011/07/13/post_01
+            @return a single BlogPosts element
+        '''
+        return self.posts[name]
+
+    def get_posts(self):
+        return [ v for _,v in self.posts.items() ]
 
 
 def erase_dir_contents(pathname):
@@ -103,8 +140,11 @@ def main():
     template_dir = floc.get_template_dir()
     mte = MicroTemplateEngine(template_dir)
     mte.load_all_templates()
-
-    print mte.render_site('navi', 'the content')
+    
+    log('loading blog data...')
+    blog_dir = floc.get_blog_dir()
+    blog_data = BlogDataSource(blog_dir)
+    blog_data.load_data()
 
     return 0
 
