@@ -4,6 +4,7 @@ import sys
 import os
 import shutil
 import datetime
+import re
 
 def log(string):
     print string
@@ -115,16 +116,32 @@ class DirectoryLister:
 
 class BlogPost:
     def __init__(self):
-        self.name = "" #relative path minus file ending
+        self.name = "" #relative path minus file ending plus "blog:" prefix
         self.title = "" #a title from the metadata
         self.created = None #datetime.datetime object
         self.last_updated = None #datetime.datetime object
         self.content = "" #the raw content
         self.renderas = "html" #the rendering to use on the content (html/markdown/...)
+        self.author = "" #the author
 
     def __str__(self):
         return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
                 (self.name, self.title, self.created, self.last_updated, self.renderas)
+
+def parse_datetime(datestring):
+    dt = None
+
+    formats = ["%Y/%m/%d"]
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(datestring, fmt)
+        except ValueError:
+            pass
+
+    if not dt:
+        raise WeavyError('date string %s matches none of the known format patterns (%s)' % (datestring, formats))
+    
+    return dt
 
 class BlogDataSource:
     def __init__(self, blog_dir):
@@ -154,6 +171,18 @@ class BlogDataSource:
         post.name = self.__name_from_filename(filename)
         post.renderas = self.__renderas_from_filename(filename)
         post.created = self.__datetime_from_filename(filename)
+        
+        post_data = self.__read_post_file(os.path.join(self.blog_dir, filename))
+        metadata, content = self.__parse_post_data(post_data)
+        if metadata.has_key("title"):
+            post.title = metadata["title"]
+        if metadata.has_key("last_changed"):
+            post.last_changed = parse_datetime(metadata["last_changed"])
+        if metadata.has_key("created"):
+            post.created = parse_datetime(metadata["last_changed"])
+        if metadata.has_key("author"):
+            post.author = metadata["author"]
+        
         print post
         return post
 
@@ -176,8 +205,40 @@ class BlogDataSource:
         else:
             return "html"
 
+    def __read_post_file(self, filename):
+        f = open(filename, "rt")
+        data = f.read().decode("utf8")
+        f.close()
+        return data
+
+    def __parse_post_data(self, post_data):
+        if not post_data.startswith("---\n") or post_data.startswith("---\r"):
+            return ({}, post_data)
+        
+        post_lines = post_data.splitlines()
+        metadata = {}
+        content_begin_lineno = 0
+        for line in post_lines[1:]:
+            if line == "---":
+                break
+            content_begin_lineno += 1
+            key, value = self.__parse_metadata_line(line)
+            metadata[key] = value
+
+        return (metadata, os.linesep.join( post_lines[content_begin_lineno:] ))
 
 
+    def __parse_metadata_line(self, line):
+        line_parts = line.split(":", 1)
+        if len(line_parts) != 2:
+            raise WeavyError("metadata lines must be of the form \"key: value\"")
+        
+        key = line_parts[0].strip()
+        value = line_parts[1].strip()
+        if not re.match("[a-z_]+", key):
+            raise WeavyError('key in metadata must be [a-z_]+ but is: %s' % key)
+            
+        return (key, value)
 
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
