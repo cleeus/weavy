@@ -36,6 +36,9 @@ class MicroTemplateEngine:
 
     def render_post(self, title, content):
         return self.__render('post', {'title':title, 'content':content})
+
+    def render_blog(self, content):
+        return self.__render('blog', {'content':content})
     
     def render_site(self, navigation, content):
         return self.__render('site', {'navigation':navigation, 'content':content})
@@ -174,6 +177,8 @@ class BlogDataSource:
         
         post_data = self.__read_post_file(os.path.join(self.blog_dir, filename))
         metadata, content = self.__parse_post_data(post_data)
+        post.content = content
+
         if metadata.has_key("title"):
             post.title = metadata["title"]
         if metadata.has_key("last_changed"):
@@ -183,7 +188,6 @@ class BlogDataSource:
         if metadata.has_key("author"):
             post.author = metadata["author"]
         
-        print post
         return post
 
     def __name_from_filename(self, filename):
@@ -217,11 +221,12 @@ class BlogDataSource:
         
         post_lines = post_data.splitlines()
         metadata = {}
-        content_begin_lineno = 0
+        content_begin_lineno = 1
         for line in post_lines[1:]:
+            content_begin_lineno += 1
             if line == "---":
                 break
-            content_begin_lineno += 1
+            
             key, value = self.__parse_metadata_line(line)
             metadata[key] = value
 
@@ -243,12 +248,46 @@ class BlogDataSource:
 class SiteRenderer:
     def __init__(self, out_dir, blog_data_source, pages_data_source, micro_template_engine):
         self.out_dir = out_dir
-        self.blog_data_source = blog_data_source
-        self.pages_data_source = pages_data_source
+        self.blog = blog_data_source
+        self.pages = pages_data_source
         self.mte = micro_template_engine
     
     def render(self):
-        pass
+        self.__render_blog()
+
+    def __render_blog(self):
+        posts = self.blog.get_posts()
+        posts_html = []
+        for post in posts:
+            posts_html.append( self.mte.render_post(post.title, post.content) )
+
+        blog_html = self.mte.render_blog(os.linesep.join(posts_html))
+        site_html = self.mte.render_site(self.__make_navigation(), blog_html)
+
+        self.__write_file(os.path.join(self.out_dir, "blog.html"), site_html)
+
+    def __write_file(self, filename, content):
+        dirname = os.path.dirname(filename)
+
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        f = open(filename, "wt")
+        f.write(content)
+        f.close()
+
+
+    def __make_navigation(self):
+        return \
+        '''
+        <ul>
+            <li>blog</li>
+            <li>pages</li>
+        </ul>
+        '''
+        
+
+
 
 
 def erase_dir_contents(pathname):
