@@ -117,20 +117,6 @@ class DirectoryLister:
     def __make_relative(self, names):
         return [ x[len(self.directory):] for x in names ]
 
-class BlogPost:
-    def __init__(self):
-        self.name = "" #relative path minus file ending plus "blog:" prefix
-        self.title = "" #a title from the metadata
-        self.created = None #datetime.datetime object
-        self.last_updated = None #datetime.datetime object
-        self.content = "" #the raw content
-        self.renderas = "html" #the rendering to use on the content (html/markdown/...)
-        self.author = "" #the author
-
-    def __str__(self):
-        return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
-                (self.name, self.title, self.created, self.last_updated, self.renderas)
-
 def parse_datetime(datestring):
     dt = None
 
@@ -145,6 +131,60 @@ def parse_datetime(datestring):
         raise WeavyError('date string %s matches none of the known format patterns (%s)' % (datestring, formats))
     
     return dt
+    
+    
+def parse_metadata_line(line):
+    line_parts = line.split(":", 1)
+    if len(line_parts) != 2:
+        raise WeavyError("metadata lines must be of the form \"key: value\"")
+        
+    key = line_parts[0].strip()
+    value = line_parts[1].strip()
+    if not re.match("[a-z_]+", key):
+        raise WeavyError('key in metadata must be [a-z_]+ but is: %s' % key)
+            
+    return (key, value)
+
+
+def parse_metadata(site_elem_data):
+    if not site_elem_data.startswith("---\n") or site_elem_data.startswith("---\r"):
+        return ({}, site_elem_data)
+        
+    lines = site_elem_data.splitlines()
+    metadata = {}
+    content_begin_lineno = 1
+    for line in lines[1:]:
+        content_begin_lineno += 1
+        if line == "---":
+            break
+            
+        key, value = parse_metadata_line(line)
+        metadata[key] = value
+
+    return (metadata, os.linesep.join( lines[content_begin_lineno:] ))
+
+def load_site_data(dirtoload, out_map, site_item_facmethod):
+    dirlst = DirectoryLister(dirtoload)
+    dirlst.collect()
+    files = dirlst.get_files()
+    for filename in files:
+        item = site_item_facmethod(filename)
+        out_map[item.name] = item
+
+class SiteItem:
+    def __init__(self):
+        self.name = "" #relative path minus file ending plus prefix ("blog:", "page:", "media:", ...)
+        self.path = "" #full absolute path into the filesystem
+        self.title = "" #a title from the metadata
+        self.created = None #datetime.datetime object
+        self.last_updated = None #datetime.datetime object
+        self.content = "" #the raw content
+        self.renderas = "html" #the rendering to use on the content (html/markdown/...)
+        self.author = "" #the author
+
+    def __str__(self):
+        return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
+                (self.name, self.title, self.created, self.last_updated, self.renderas)
 
 class BlogDataSource:
     def __init__(self, blog_dir):
@@ -152,12 +192,7 @@ class BlogDataSource:
         self.posts = {} #map name->post
 
     def load_data(self):
-        dirlst = DirectoryLister(self.blog_dir)
-        dirlst.collect()
-        files = dirlst.get_files()
-        for filename in files:
-            post = self.__make_post(filename)
-            self.posts[post.name] = post
+        load_site_data(self.blog_dir, self.posts, self.__make_post)
 
     def get_post(self, name):
         ''' @param name the name of a blog post
@@ -170,13 +205,14 @@ class BlogDataSource:
         return [ v for _,v in self.posts.items() ]
 
     def __make_post(self, filename):
-        post = BlogPost()
+        post = SiteItem()
         post.name = self.__name_from_filename(filename)
+        post.path = os.path.join(self.blog_dir, filename)
         post.renderas = self.__renderas_from_filename(filename)
         post.created = self.__datetime_from_filename(filename)
         
         post_data = self.__read_post_file(os.path.join(self.blog_dir, filename))
-        metadata, content = self.__parse_post_data(post_data)
+        metadata, content = parse_metadata(post_data)
         post.content = content
 
         if metadata.has_key("title"):
@@ -215,35 +251,24 @@ class BlogDataSource:
         f.close()
         return data
 
-    def __parse_post_data(self, post_data):
-        if not post_data.startswith("---\n") or post_data.startswith("---\r"):
-            return ({}, post_data)
-        
-        post_lines = post_data.splitlines()
-        metadata = {}
-        content_begin_lineno = 1
-        for line in post_lines[1:]:
-            content_begin_lineno += 1
-            if line == "---":
-                break
-            
-            key, value = self.__parse_metadata_line(line)
-            metadata[key] = value
 
-        return (metadata, os.linesep.join( post_lines[content_begin_lineno:] ))
+class PagesDataSource :
+    def __init__(self, pages_dir):
+        self.pages_dir = pages_dir
+        self.pages = {}
 
+    def load_data(self):
+        load_site_data(self.pages_dir, self.pages, self.__make_page)
 
-    def __parse_metadata_line(self, line):
-        line_parts = line.split(":", 1)
-        if len(line_parts) != 2:
-            raise WeavyError("metadata lines must be of the form \"key: value\"")
-        
-        key = line_parts[0].strip()
-        value = line_parts[1].strip()
-        if not re.match("[a-z_]+", key):
-            raise WeavyError('key in metadata must be [a-z_]+ but is: %s' % key)
-            
-        return (key, value)
+    def get_page(self, page_name):
+        return self.pages[page_name]
+
+    def get_pages(self):
+        return [ v for _,v in self.pages.items() ]
+
+    def __make_page(self, filename):
+        page = SiteItem()
+        return page
 
 class SiteRenderer:
     def __init__(self, out_dir, blog_data_source, pages_data_source, micro_template_engine):
@@ -264,7 +289,7 @@ class SiteRenderer:
         blog_html = self.mte.render_blog(os.linesep.join(posts_html))
         site_html = self.mte.render_site(self.__make_navigation(), blog_html)
 
-        self.__write_file(os.path.join(self.out_dir, "blog.html"), site_html)
+        self.__write_file(os.path.join(self.out_dir, "blog/index.html"), site_html)
 
     def __write_file(self, filename, content):
         dirname = os.path.dirname(filename)
@@ -311,10 +336,13 @@ def main():
     blog_data = BlogDataSource(blog_dir)
     blog_data.load_data()
     
-    #TODO: load pages data
+    log('loading pages data...')
+    pages_dir = floc.get_pages_dir()
+    pages_data = PagesDataSource(pages_dir)
+    pages_data.load_data()
 
     log('rendering site...')
-    siteR = SiteRenderer(out_dir, blog_data, None, mte)
+    siteR = SiteRenderer(out_dir, blog_data, pages_data, mte)
     siteR.render()
 
     return 0
