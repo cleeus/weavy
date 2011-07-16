@@ -48,6 +48,9 @@ class MicroTemplateEngine:
     def render_site(self, navigation, content):
         return self.__render('site', {'navigation':navigation, 'content':content})
 
+    def render_page(self, content):
+        return self.__render('page', {'content':content})
+
 class FolderLocator:
     def __init__(self):
         self.in_dir = os.path.abspath('.')
@@ -99,15 +102,14 @@ class DirectoryLister:
         self.dirs = []
 
     def collect(self):
+        self.files = []
+        self.dirs = []
         for dirpath, dirnames, filenames in os.walk(self.directory):
-            self.dirs = []
-            self.files = []
             for dirname in dirnames:
                 self.dirs.append( os.path.join(dirpath, dirname) )
             for filename in filenames:
                 self.files.append( os.path.join(dirpath, filename) )
         
-
     def get_files(self, relative=True):
         if not relative:
             return self.files
@@ -174,16 +176,39 @@ def load_site_data(dirtoload, out_map, site_item_facmethod):
     files = dirlst.get_files()
     for filename in files:
         item = site_item_facmethod(filename)
-        out_map[item.name] = item
+        out_map[str(item.name)] = item
 
 class SiteCategories:
     BLOG = "blog"
     PAGES = "page"
     MEDIA = "media"
 
+
+class ItemName:
+    def __init__(self):
+        self.category = ""
+        self.name = ""
+
+    def __str__(self):
+        return '%s:%s' % (self.category, self.name)
+
+    @classmethod
+    def from_str(cls, full_name_str):
+        parts = full_name_str.split(":", 1)
+        self.category = parts[0]
+        self.name = parts[1]
+
+    @classmethod
+    def from_parts(cls, category, name):
+        iname = ItemName()
+        iname.category = category
+        iname.name = name
+        return iname
+
+
 class SiteItem:
     def __init__(self):
-        self.name = "" #relative path minus file ending plus prefix ("blog:", "page:", "media:", ...)
+        self.name = None #ItemName / relative path minus file ending plus prefix ("blog:", "page:", "media:", ...)
         self.path = "" #full absolute path into the filesystem
         self.title = "" #a title from the metadata
         self.created = None #datetime.datetime object
@@ -198,7 +223,7 @@ class SiteItem:
     
     def set_name_from_filename(self, site_category, filename):
         fileext = os.path.splitext(filename)
-        self.name = '%s:%s' % (site_category, filename[:-len(fileext[1])])
+        self.name = ItemName.from_parts( site_category, filename[:-len(fileext[1])] )
 
     def set_metadata(self, metadata):
         if metadata.has_key("title"):
@@ -281,6 +306,7 @@ class PagesDataSource :
         page.set_metadata(metadata)
         return page
 
+
 class SiteRenderer:
     def __init__(self, out_dir, blog_data_source, pages_data_source, micro_template_engine):
         self.out_dir = out_dir
@@ -290,6 +316,7 @@ class SiteRenderer:
     
     def render(self):
         self.__render_blog()
+        self.__render_pages()
 
     def __render_blog(self):
         posts = self.blog.get_posts()
@@ -301,6 +328,17 @@ class SiteRenderer:
         site_html = self.mte.render_site(self.__make_navigation(), blog_html)
 
         self.__write_file(os.path.join(self.out_dir, "blog/index.html"), site_html)
+
+    def __render_pages(self):
+        pages = self.pages.get_pages()
+        for page in pages:
+            self.__render_page(page)
+
+    def __render_page(self, page):
+        filename = os.path.join( self.out_dir, '%s.html' % page.name.name )
+        page_html = self.mte.render_page(page.content)
+        site_html = self.mte.render_site(self.__make_navigation(), page_html)
+        self.__write_file(filename, site_html)
 
     def __write_file(self, filename, content):
         dirname = os.path.dirname(filename)
