@@ -9,6 +9,12 @@ import re
 def log(string):
     sys.stdout.write(string + os.linesep)
 
+def read_file(filename):
+    f = open(filename, "rt")
+    content = f.read().decode("utf8")
+    f.close()
+    return content
+
 class WeavyError(Exception):
     pass
 
@@ -24,9 +30,8 @@ class MicroTemplateEngine:
         self.__load_tpl('page', 'html')
 
     def __load_tpl(self, template_name, file_ending):
-        f = open('%s/_%s.%s' % (self.template_dir, template_name, file_ending), 'rt')
-        self.tpl[template_name] = f.read().decode('utf8')
-        f.close()
+        filename = '%s/_%s.%s' % (self.template_dir, template_name, file_ending)
+        self.tpl[template_name] = read_file(filename)
     
     def __render(self, template, data):
         temp = self.tpl[template]
@@ -171,6 +176,11 @@ def load_site_data(dirtoload, out_map, site_item_facmethod):
         item = site_item_facmethod(filename)
         out_map[item.name] = item
 
+class SiteCategories:
+    BLOG = "blog"
+    PAGES = "page"
+    MEDIA = "media"
+
 class SiteItem:
     def __init__(self):
         self.name = "" #relative path minus file ending plus prefix ("blog:", "page:", "media:", ...)
@@ -185,6 +195,30 @@ class SiteItem:
     def __str__(self):
         return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
                 (self.name, self.title, self.created, self.last_updated, self.renderas)
+    
+    def set_name_from_filename(self, site_category, filename):
+        fileext = os.path.splitext(filename)
+        self.name = '%s:%s' % (site_category, filename[:-len(fileext[1])])
+
+    def set_metadata(self, metadata):
+        if metadata.has_key("title"):
+            self.title = metadata["title"]
+        if metadata.has_key("last_changed"):
+            self.last_changed = parse_datetime(metadata["last_changed"])
+        if metadata.has_key("created"):
+            self.created = parse_datetime(metadata["last_changed"])
+        if metadata.has_key("author"):
+            self.author = metadata["author"]
+    
+    def set_renderas_from_filename(self, filename):
+        fileext = os.path.splitext(filename)
+        fileext = fileext[1].replace(".", "")
+        if fileext != "":
+            self.renderas = fileext
+        else:
+            self.renderas = "html"
+
+
 
 class BlogDataSource:
     def __init__(self, blog_dir):
@@ -206,50 +240,21 @@ class BlogDataSource:
 
     def __make_post(self, filename):
         post = SiteItem()
-        post.name = self.__name_from_filename(filename)
+        post.set_name_from_filename(SiteCategories.BLOG, filename)
         post.path = os.path.join(self.blog_dir, filename)
-        post.renderas = self.__renderas_from_filename(filename)
+        post.set_renderas_from_filename(filename)
         post.created = self.__datetime_from_filename(filename)
-        
-        post_data = self.__read_post_file(os.path.join(self.blog_dir, filename))
+        post_data = read_file(os.path.join(self.blog_dir, filename))
         metadata, content = parse_metadata(post_data)
-        post.content = content
-
-        if metadata.has_key("title"):
-            post.title = metadata["title"]
-        if metadata.has_key("last_changed"):
-            post.last_changed = parse_datetime(metadata["last_changed"])
-        if metadata.has_key("created"):
-            post.created = parse_datetime(metadata["last_changed"])
-        if metadata.has_key("author"):
-            post.author = metadata["author"]
-        
+        post.content = content 
+        post.set_metadata(metadata)
         return post
-
-    def __name_from_filename(self, filename):
-        fileext = os.path.splitext(filename)
-        name = 'blog:%s' % filename[:-len(fileext[1])]
-        return name
 
     def __datetime_from_filename(self, filename):
         datestr = os.path.dirname(filename)
         datestr_parts = datestr.split(os.path.sep)
         date = datetime.datetime(int(datestr_parts[0]), int(datestr_parts[1]), int(datestr_parts[2]))
         return date 
-
-    def __renderas_from_filename(self, filename):
-        fileext = os.path.splitext(filename)
-        fileext = fileext[1].replace(".", "")
-        if fileext != "":
-            return fileext
-        else:
-            return "html"
-
-    def __read_post_file(self, filename):
-        f = open(filename, "rt")
-        data = f.read().decode("utf8")
-        f.close()
-        return data
 
 
 class PagesDataSource :
@@ -268,6 +273,11 @@ class PagesDataSource :
 
     def __make_page(self, filename):
         page = SiteItem()
+        page.set_name_from_filename(SiteCategories.PAGES, filename)
+        page_data = read_file( os.path.join( self.pages_dir, filename) )
+        metadata, content = parse_metadata(page_data)
+        page.content = content
+        page.set_metadata(metadata)
         return page
 
 class SiteRenderer:
