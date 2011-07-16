@@ -274,7 +274,7 @@ class PagesDataSource :
     def __make_page(self, filename):
         page = SiteItem()
         page.set_name_from_filename(SiteCategories.PAGES, filename)
-        page.path = os.path.joint( self.pages_dir, filename )
+        page.path = os.path.join( self.pages_dir, filename )
         page_data = read_file( os.path.join( self.pages_dir, filename) )
         metadata, content = parse_metadata(page_data)
         page.content = content
