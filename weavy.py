@@ -40,6 +40,8 @@ class MicroTemplateEngine:
         self.__load_tpl('blog', 'html')
         self.__load_tpl('post', 'html')
         self.__load_tpl('page', 'html')
+        self.__load_tpl('nav_level', 'html')
+        self.__load_tpl('nav_node', 'html')
 
     def __load_tpl(self, template_name, file_ending):
         filename = '%s/_%s.%s' % (self.template_dir, template_name, file_ending)
@@ -71,6 +73,12 @@ class MicroTemplateEngine:
 
     def render_page(self, from_item_name, content):
         return self.__render('page', {'content':content}, from_item_name)
+
+    def render_nav_level(self, from_item_name, content):
+        return self.__render('nav_level', {'content': content}, from_item_name)
+
+    def render_nav_node(self, from_item_name, linkedpage, visualtext, subnavcontent):
+        return self.__render('nav_node', {'linkedpage':linkedpage, 'visualtext':visualtext, 'subnavcontent':subnavcontent}, from_item_name)
 
 class FolderLocator:
     def __init__(self):
@@ -320,6 +328,11 @@ class PagesDataSource :
         page.set_metadata(metadata)
         return page
 
+class DataSources:
+    def __init__(self, blog_data_source, pages_data_source):
+        self.blog = blog_data_source
+        self.pages = pages_data_source
+
 class ItemNameResolver:
     def __init__(self, out_dir):
         self.out_dir = out_dir
@@ -343,27 +356,97 @@ class ItemNameResolver:
         return self.get_rel_path(item_name, rel_to).replace(os.path.sep, "/")
 
 
+class NavTreeNode:
+    def __init__(self, visual_text, linked_item_name):
+        self.visual_text = visual_text
+        self.linked_item_name = linked_item_name
+        self.child_list = []
+    
+    def __str__(self):
+        return self.pretty_str()
+
+    def pretty_str(self, indent_level=0):
+        def _indent(level, string):
+            return " "*level + string
+
+        lines = []
+        lines.append( _indent(indent_level, '%s->%s' % (self.visual_text, self.linked_item_name) ) )
+        for child in self.child_list:
+            lines.append( child.pretty_str(indent_level+1) )
+        return os.linesep.join(lines)
+
+    def add_child(self, node):
+        self.child_list.append(node)
+
+    def get_child(self, visual_text):
+        for child in self.child_list:
+            if child.visual_text == visual_text:
+                return child
+        return None
+
+    def get_children(self):
+        return self.child_list
+
+
+
 class NavigationRenderer:
-    def __init__(self, item_name_resolver, micro_template_engine):
+    def __init__(self, item_name_resolver, data_sources, micro_template_engine):
         self.inr = item_name_resolver
         self.mte = micro_template_engine
+        self.ds = data_sources
 
     def make_navigation(self, from_item_name):
-        return \
-        '''
-        <ul>
-            <li>blog</li>
-            <li>about</li>
-        </ul>
-        '''
+        tree = self.__make_nav_tree()
+        return self.__recursive_render(tree, from_item_name)
+    
+    def __recursive_render(self, root_node, from_item_name):
+        children = root_node.get_children()
+        if len(children) > 0:
+            children_html = []
+            for child in children:
+                subnavcontent = self.__recursive_render(child, from_item_name)
+                linked_url = self.inr.get_rel_path_http(child.linked_item_name, from_item_name)
+                visual_text = child.visual_text
+                child_html = self.mte.render_nav_node(from_item_name, linked_url, visual_text, subnavcontent)
+                children_html.append( child_html )
+
+            return self.mte.render_nav_level(from_item_name, os.linesep.join(children_html))
+        else:
+            return ""
+
+    def __make_nav_tree(self):
+        root = NavTreeNode(None, None)
+        for page in self.ds.pages.get_pages():
+            visual_path = self.__name_to_visual_path(page.name)
+            self.__recursive_add_path(root, visual_path)
+        return root
+
+    def __name_to_visual_path(self, item_name):
+        path_elems = item_name.name.split("/")[:-1]
+        visual_path = []
+        path = ""
+        for path_elem in path_elems:
+            path += path_elem
+            visual_path.append( (path_elem, ItemName.from_parts(SiteCategories.PAGES, '%s/index' % path) ) )
+            path += "/"
+        return visual_path 
+        
+    def __recursive_add_path(self, root_node, visual_path):
+        if len(visual_path) > 0:
+            visual_text, linked_page = visual_path[0]
+            child = root_node.get_child(visual_text)
+            if child == None:
+                child = NavTreeNode(visual_text, linked_page)
+                root_node.add_child(child)
+            self.__recursive_add_path(child, visual_path[1:])
 
 class SiteRenderer:
-    def __init__(self, item_name_resolver, blog_data_source, pages_data_source, micro_template_engine):
+    def __init__(self, item_name_resolver, data_sources, micro_template_engine):
         self.inr = item_name_resolver
-        self.blog = blog_data_source
-        self.pages = pages_data_source
+        self.blog = data_sources.blog
+        self.pages = data_sources.pages
         self.mte = micro_template_engine
-        self.navR = NavigationRenderer(self.inr, self.mte)
+        self.navR = NavigationRenderer(self.inr, data_sources, self.mte)
     
     def render(self):
         self.__render_blog()
@@ -443,6 +526,7 @@ def main():
     pages_data.load_data()
 
     inr = ItemNameResolver(out_dir)
+    ds = DataSources(blog_data, pages_data)
 
     log('loading templates...')
     template_dir = floc.get_template_dir()
@@ -450,7 +534,7 @@ def main():
     mte.load_all_templates() 
     
     log('rendering site...')
-    siteR = SiteRenderer(inr, blog_data, pages_data, mte)
+    siteR = SiteRenderer(inr, ds, mte)
     siteR.render()
 
     return 0
