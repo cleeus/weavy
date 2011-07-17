@@ -442,6 +442,8 @@ class NavigationRenderer:
 
     def __make_nav_tree(self):
         root = NavTreeNode(None, None)
+        blog_node = NavTreeNode("blog", ItemName.from_parts(SiteCategories.BLOG, "index"))
+        root.add_child(blog_node)
         for page in self.ds.pages.get_pages():
             visual_path = self.__name_to_visual_path(page.name)
             self.__recursive_add_path(root, visual_path)
