@@ -23,9 +23,16 @@ def read_file(filename):
 class WeavyError(Exception):
     pass
 
+class SiteCategories:
+    BLOG = "blog"
+    PAGES = "page"
+    MEDIA = "media"
+    categories = [BLOG, PAGES, MEDIA]
+
 class MicroTemplateEngine:
-    def __init__(self, template_dir):
+    def __init__(self, template_dir, item_name_resolver):
         self.template_dir = template_dir
+        self.inr = item_name_resolver
         self.tpl = {}
 
     def load_all_templates(self):
@@ -38,23 +45,32 @@ class MicroTemplateEngine:
         filename = '%s/_%s.%s' % (self.template_dir, template_name, file_ending)
         self.tpl[template_name] = read_file(filename)
     
-    def __render(self, template, data):
+    def __render(self, template, data, from_item_name):
         temp = self.tpl[template]
         for key, value in data.items():
             temp = temp.replace('{{%s}}' % key, value, 1)
+        
+        urls = []
+        for cat in SiteCategories.categories:
+            urls.extend( re.findall('\{\{%s:.+\}\}' % cat, temp) )
+
+        for url in urls:
+            item_name = url[2:-2]
+            temp = temp.replace(url, self.inr.get_rel_path_http(ItemName.from_str(item_name), from_item_name))
+
         return temp
 
-    def render_post(self, title, content):
-        return self.__render('post', {'title':title, 'content':content})
+    def render_post(self, from_item_name, title, content):
+        return self.__render('post', {'title':title, 'content':content}, from_item_name)
 
-    def render_blog(self, content):
-        return self.__render('blog', {'content':content})
+    def render_blog(self, from_item_name, content):
+        return self.__render('blog', {'content':content}, from_item_name)
     
-    def render_site(self, navigation, content):
-        return self.__render('site', {'navigation':navigation, 'content':content})
+    def render_site(self, from_item_name, navigation, content):
+        return self.__render('site', {'navigation':navigation, 'content':content}, from_item_name)
 
-    def render_page(self, content):
-        return self.__render('page', {'content':content})
+    def render_page(self, from_item_name, content):
+        return self.__render('page', {'content':content}, from_item_name)
 
 class FolderLocator:
     def __init__(self):
@@ -182,12 +198,6 @@ def load_site_data(dirtoload, out_map, site_item_facmethod):
     for filename in files:
         item = site_item_facmethod(filename)
         out_map[str(item.name)] = item
-
-class SiteCategories:
-    BLOG = "blog"
-    PAGES = "page"
-    MEDIA = "media"
-
 
 class ItemName:
     def __init__(self):
@@ -321,11 +331,16 @@ class ItemNameResolver:
         if item_name.category == "page":
             return os.path.join( self.out_dir, '%s.html' % item_name.name )
 
-    def get_rel_path(self, item_name, rel_to_path):
-        return os.path.relpath(self.get_abs_path(item_name), rel_to_path)
+    def get_rel_path(self, item_name, rel_to):
+        if isinstance(rel_to, ItemName):
+            rel_to = self.get_abs_path(rel_to)
+        rel_to = os.path.dirname(rel_to)
+        abspath = self.get_abs_path(item_name)
+        relpath = os.path.relpath(abspath, rel_to)
+        return relpath
 
-    def get_rel_path_http(self, item_name, rel_to_path):
-        return self.get_rel_path.replace(os.path.sep, "/")
+    def get_rel_path_http(self, item_name, rel_to):
+        return self.get_rel_path(item_name, rel_to).replace(os.path.sep, "/")
 
 
 class NavigationRenderer:
@@ -363,20 +378,20 @@ class SiteRenderer:
     def __render_blog_htmlview(self, posts):
         posts_html = []
         for post in posts:
-            posts_html.append( self.mte.render_post(post.title, post.content) )
+            posts_html.append( self.mte.render_post(post.name, post.title, post.content) )
         
         post_list_iname = ItemName.from_str("blog:index")
-        blog_html = self.mte.render_blog(os.linesep.join(posts_html))
-        site_html = self.mte.render_site(self.make_navigation(post_list_iname), blog_html)
+        blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
+        site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
 
         filename = self.inr.get_abs_path(post_list_iname)
         self.__write_file(filename, site_html)
 
     def __render_blog_post(self, post):
         filename = self.inr.get_abs_path(post.name)
-        post_html = self.mte.render_post(post.title, post.content)
-        page_html = self.mte.render_page(post.content)
-        site_html = self.mte.render_site(self.make_navigation(post.name), page_html)
+        post_html = self.mte.render_post(post.name, post.title, post.content)
+        page_html = self.mte.render_page(post.name, post.content)
+        site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
 
     def __render_pages(self):
@@ -386,8 +401,8 @@ class SiteRenderer:
 
     def __render_page(self, page):
         filename = self.inr.get_abs_path(page.name)
-        page_html = self.mte.render_page(page.content)
-        site_html = self.mte.render_site(self.make_navigation(page.name), page_html)
+        page_html = self.mte.render_page(page.name, page.content)
+        site_html = self.mte.render_site(page.name, self.make_navigation(page.name), page_html)
         self.__write_file(filename, site_html)
 
     def __write_file(self, filename, content):
@@ -417,11 +432,6 @@ def main():
     log('cleaning output dir: %s' % out_dir)
     erase_dir_contents(out_dir)
     
-    log('loading templates...')
-    template_dir = floc.get_template_dir()
-    mte = MicroTemplateEngine(template_dir)
-    mte.load_all_templates()
-    
     log('loading blog data...')
     blog_dir = floc.get_blog_dir()
     blog_data = BlogDataSource(blog_dir)
@@ -432,8 +442,14 @@ def main():
     pages_data = PagesDataSource(pages_dir)
     pages_data.load_data()
 
-    log('rendering site...')
     inr = ItemNameResolver(out_dir)
+
+    log('loading templates...')
+    template_dir = floc.get_template_dir()
+    mte = MicroTemplateEngine(template_dir, inr)
+    mte.load_all_templates() 
+    
+    log('rendering site...')
     siteR = SiteRenderer(inr, blog_data, pages_data, mte)
     siteR.render()
 
