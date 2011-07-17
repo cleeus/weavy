@@ -67,8 +67,13 @@ class MicroTemplateEngine:
 
         return temp
 
-    def render_post(self, from_item_name, title, content):
-        return self.__render('post', {'title':title, 'content':content}, from_item_name)
+    def render_post(self, from_item_name, title, postdate, posturl, content):
+        return self.__render('post', {\
+            'title':title, \
+            'postdate':postdate, \
+            'posturl':posturl, \
+            'content':content \
+        }, from_item_name)
 
     def render_blog(self, from_item_name, content):
         return self.__render('blog', {'content':content}, from_item_name)
@@ -494,11 +499,13 @@ class SiteRenderer:
         self.__render_blog_htmlview(posts)
 
     def __render_blog_htmlview(self, posts):
+        post_list_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
         posts_html = []
         for post in posts:
-            posts_html.append( self.mte.render_post(post.name, post.title, post.content) )
+            post_url = self.inr.get_rel_path_http(post.name, post_list_iname) 
+            post_datetime = self.__make_post_date(post)
+            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post.content) )
         
-        post_list_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
 
@@ -507,10 +514,18 @@ class SiteRenderer:
 
     def __render_blog_post(self, post):
         filename = self.inr.get_abs_path(post.name)
-        post_html = self.mte.render_post(post.name, post.title, post.content)
-        page_html = self.mte.render_page(post.name, post.content)
+        post_datetime = self.__make_post_date(post)
+        post_url = self.inr.get_rel_path_http(post.name, post.name)
+        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post.content)
+        page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
+    
+    def __make_post_date(self, post):
+        if post.created.hour == 0 and post.created.minute == 0:
+            return post.created.strftime('%Y/%m/%d')
+        else:
+            return post.created.strftime('%Y/%m/%d %H:%M')
 
     def __render_pages(self):
         pages = self.pages.get_pages()
