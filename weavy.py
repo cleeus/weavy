@@ -83,30 +83,21 @@ class MicroTemplateEngine:
 class FolderLocator:
     def __init__(self):
         self.in_dir = os.path.abspath('.')
-        blog_dir = '%s/blog/' % self.in_dir
-        pages_dir = '%s/pages/' % self.in_dir
-        template_dir = '%s/template/' % self.in_dir
-        out_dir = '%s/out/' % self.in_dir
+        self.blog_dir = '%s/blog/' % self.in_dir
+        self.pages_dir = '%s/pages/' % self.in_dir
+        self.template_dir = '%s/template/' % self.in_dir
+        self.out_dir = '%s/out/' % self.in_dir
+        self.media_dir = '%s/media/' % self.in_dir
 
-        if  os.path.isdir(blog_dir):
-            self.blog_dir = blog_dir
-        else:
-            raise WeavyError('blog dir (%s) not found' % blog_dir)
+        def _check_dir(dirpath, dirname):
+            if not os.path.isdir(dirpath):
+                raise WeavyError('%s dir (%s) not found' % dirname, dirpath)
 
-        if os.path.isdir(pages_dir):
-            self.pages_dir = pages_dir
-        else:
-            raise WeavyError('pages dir (%s) not found' % pages_dir)
-
-        if os.path.isdir(template_dir):
-            self.template_dir = template_dir
-        else:
-            raise WeavyError('template dir (%s) not found' % template_dir)
-
-        if os.path.isdir(out_dir):
-            self.out_dir = out_dir
-        else:
-            raise WeavyError('out dir (%s) not found' % out_dir)
+        _check_dir(self.blog_dir, 'blog')
+        _check_dir(self.pages_dir, 'pages')
+        _check_dir(self.template_dir, 'template')
+        _check_dir(self.out_dir, 'out')
+        _check_dir(self.media_dir, 'media')
 
     def get_in_dir(self):
         return self.in_dir
@@ -122,6 +113,9 @@ class FolderLocator:
 
     def get_pages_dir(self):
         return self.pages_dir
+
+    def get_media_dir(self):
+        return self.media_dir
 
 
 class DirectoryLister:
@@ -245,8 +239,13 @@ class SiteItem:
                 (self.name, self.title, self.created, self.last_updated, self.renderas)
     
     def set_name_from_filename(self, site_category, filename):
-        fileext = os.path.splitext(filename)
-        self.name = ItemName.from_parts( site_category, filename[:-len(fileext[1])] )
+        if site_category == SiteCategories.MEDIA:
+            name = filename
+        else:
+            fileext = os.path.splitext(filename)
+            name = filename[:-len(fileext[1])]
+
+        self.name = ItemName.from_parts( site_category, name )
 
     def set_metadata(self, metadata):
         if metadata.has_key("title"):
@@ -305,7 +304,7 @@ class BlogDataSource:
         return date 
 
 
-class PagesDataSource :
+class PagesDataSource:
     def __init__(self, pages_dir):
         self.pages_dir = pages_dir
         self.pages = {}
@@ -329,21 +328,47 @@ class PagesDataSource :
         page.set_metadata(metadata)
         return page
 
+class MediaDataSource:
+    def __init__(self, media_dir):
+        self.media_dir = media_dir
+        self.media = {}
+
+    def load_data(self):
+        load_site_data(self.media_dir, self.media, self.__make_media)
+
+    def get_media(self, media_name):
+        return self.media[media_name]
+
+    def get_medias(self):
+        return [ v for _,v in self.media.items() ]
+
+    def __make_media(self, filename):
+        media = SiteItem()
+        media.set_name_from_filename(SiteCategories.MEDIA, filename)
+        media.path = os.path.join( self.media_dir, filename )
+        return media
+
+
+
 class DataSources:
-    def __init__(self, blog_data_source, pages_data_source):
+    def __init__(self, blog_data_source, pages_data_source, media_data_source):
         self.blog = blog_data_source
         self.pages = pages_data_source
+        self.media = media_data_source
 
 class ItemNameResolver:
     def __init__(self, out_dir):
         self.out_dir = out_dir
 
     def get_abs_path(self, item_name):
-        if item_name.category == "blog":
+        if item_name.category == SiteCategories.BLOG:
             return os.path.join( self.out_dir, os.path.join("blog", '%s.html' % item_name.name) )
 
-        if item_name.category == "page":
+        if item_name.category == SiteCategories.PAGES:
             return os.path.join( self.out_dir, '%s.html' % item_name.name )
+
+        if item_name.category == SiteCategories.MEDIA:
+            return os.path.join( self.out_dir, os.path.join("media", item_name.name) )
 
     def get_rel_path(self, item_name, rel_to):
         if isinstance(rel_to, ItemName):
@@ -446,12 +471,14 @@ class SiteRenderer:
         self.inr = item_name_resolver
         self.blog = data_sources.blog
         self.pages = data_sources.pages
+        self.media = data_sources.media
         self.mte = micro_template_engine
         self.navR = NavigationRenderer(self.inr, data_sources, self.mte)
     
     def render(self):
         self.__render_blog()
         self.__render_pages()
+        self.__render_media()
 
     def __render_blog(self):
         posts = self.blog.get_posts()
@@ -489,16 +516,25 @@ class SiteRenderer:
         site_html = self.mte.render_site(page.name, self.make_navigation(page.name), page_html)
         self.__write_file(filename, site_html)
 
+    def __render_media(self):
+        for media_item in self.media.get_medias():
+            filename = self.inr.get_abs_path(media_item.name)
+            self.__copy_file(media_item.path, filename)
+
     def __write_file(self, filename, content):
-        dirname = os.path.dirname(filename)
-
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-
+        self.__mkpath_for_file(filename)
         f = open(filename, "wt")
         f.write(content.encode("utf8"))
         f.close()
 
+    def __copy_file(self, src, dst):
+        self.__mkpath_for_file(dst)
+        shutil.copy(src, dst)
+        
+    def __mkpath_for_file(self, filename):
+        path = os.path.dirname(filename)
+        if not os.path.exists(path):
+            os.makedirs(path)
 
     def make_navigation(self, from_item_name):
         return self.navR.make_navigation(from_item_name)
@@ -525,9 +561,14 @@ def main():
     pages_dir = floc.get_pages_dir()
     pages_data = PagesDataSource(pages_dir)
     pages_data.load_data()
+    
+    log('loading media data...')
+    media_dir = floc.get_media_dir()
+    media_data = MediaDataSource(media_dir)
+    media_data.load_data()
 
     inr = ItemNameResolver(out_dir)
-    ds = DataSources(blog_data, pages_data)
+    ds = DataSources(blog_data, pages_data, media_data)
 
     log('loading templates...')
     template_dir = floc.get_template_dir()
