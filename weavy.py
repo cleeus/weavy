@@ -195,8 +195,7 @@ class ItemName:
     @classmethod
     def from_str(cls, full_name_str):
         parts = full_name_str.split(":", 1)
-        self.category = parts[0]
-        self.name = parts[1]
+        return ItemName.from_parts(parts[0], parts[1])
 
     @classmethod
     def from_parts(cls, category, name):
@@ -306,10 +305,27 @@ class PagesDataSource :
         page.set_metadata(metadata)
         return page
 
+class ItemNameResolver:
+    def __init__(self, out_dir):
+        self.out_dir = out_dir
+
+    def get_abs_path(self, item_name):
+        if item_name.category == "blog":
+            return os.path.join( self.out_dir, os.path.join("blog", '%s.html' % item_name.name) )
+
+        if item_name.category == "page":
+            return os.path.join( self.out_dir, '%s.html' % item_name.name )
+
+    def get_rel_path(self, item_name, rel_to_path):
+        return os.path.relpath(self.get_abs_path(item_name), rel_to_path)
+
+    def get_rel_path_http(self, item_name, rel_to_path):
+        return self.get_rel_path.replace(os.path.sep, "/")
+
 
 class SiteRenderer:
-    def __init__(self, out_dir, blog_data_source, pages_data_source, micro_template_engine):
-        self.out_dir = out_dir
+    def __init__(self, item_name_resolver, blog_data_source, pages_data_source, micro_template_engine):
+        self.inr = item_name_resolver
         self.blog = blog_data_source
         self.pages = pages_data_source
         self.mte = micro_template_engine
@@ -320,6 +336,11 @@ class SiteRenderer:
 
     def __render_blog(self):
         posts = self.blog.get_posts()
+        for post in posts:
+            self.__render_blog_post(post)
+        self.__render_blog_htmlview(posts)
+
+    def __render_blog_htmlview(self, posts):
         posts_html = []
         for post in posts:
             posts_html.append( self.mte.render_post(post.title, post.content) )
@@ -327,7 +348,15 @@ class SiteRenderer:
         blog_html = self.mte.render_blog(os.linesep.join(posts_html))
         site_html = self.mte.render_site(self.__make_navigation(), blog_html)
 
-        self.__write_file(os.path.join(self.out_dir, "blog/index.html"), site_html)
+        filename = self.inr.get_abs_path(ItemName.from_str("blog:index"))
+        self.__write_file(filename, site_html)
+
+    def __render_blog_post(self, post):
+        filename = self.inr.get_abs_path(post.name)
+        post_html = self.mte.render_post(post.title, post.content)
+        page_html = self.mte.render_page(post.content)
+        site_html = self.mte.render_site(self.__make_navigation(), page_html)
+        self.__write_file(filename, site_html)
 
     def __render_pages(self):
         pages = self.pages.get_pages()
@@ -335,7 +364,7 @@ class SiteRenderer:
             self.__render_page(page)
 
     def __render_page(self, page):
-        filename = os.path.join( self.out_dir, '%s.html' % page.name.name )
+        filename = self.inr.get_abs_path(page.name)
         page_html = self.mte.render_page(page.content)
         site_html = self.mte.render_site(self.__make_navigation(), page_html)
         self.__write_file(filename, site_html)
@@ -391,7 +420,8 @@ def main():
     pages_data.load_data()
 
     log('rendering site...')
-    siteR = SiteRenderer(out_dir, blog_data, pages_data, mte)
+    inr = ItemNameResolver(out_dir)
+    siteR = SiteRenderer(inr, blog_data, pages_data, mte)
     siteR.render()
 
     return 0
