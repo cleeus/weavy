@@ -218,6 +218,7 @@ class ItemName:
     @classmethod
     def from_str(cls, full_name_str):
         parts = full_name_str.split(":", 1)
+        parts[1] = parts[1].replace("\\", "/")
         return ItemName.from_parts(parts[0], parts[1])
 
     @classmethod
@@ -353,7 +354,7 @@ class ItemNameResolver:
         return relpath
 
     def get_rel_path_http(self, item_name, rel_to):
-        return self.get_rel_path(item_name, rel_to).replace(os.path.sep, "/")
+        return self.get_rel_path(item_name, rel_to).replace("\\", "/")
 
 
 class NavTreeNode:
@@ -463,7 +464,7 @@ class SiteRenderer:
         for post in posts:
             posts_html.append( self.mte.render_post(post.name, post.title, post.content) )
         
-        post_list_iname = ItemName.from_str("blog:index")
+        post_list_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
 
