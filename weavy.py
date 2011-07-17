@@ -11,17 +11,22 @@ import shutil
 import datetime
 import re
 
+class WeavyError(Exception):
+    pass
+
 def log(string):
     sys.stdout.write(string + os.linesep)
 
 def read_file(filename):
     f = open(filename, "rt")
-    content = f.read().decode("utf8")
-    f.close()
-    return content
+    content = f.read()
+    try:
+        content_unicode = content.decode("utf8")
+    except UnicodeDecodeError:
+        raise WeavyError('error during utf8-decode of file %s' % filename)
 
-class WeavyError(Exception):
-    pass
+    f.close()
+    return content_unicode
 
 class SiteCategories:
     BLOG = "blog"
