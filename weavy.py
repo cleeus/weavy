@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# This file is part of weavy.
+# Weavy is licensed under the 2-clause BSD license.
+# See the LICENSE file for full terms and conditions.
+# Copyright 2011, Kai Dietrich <mail@cleeus.de>
+
 import sys
 import os
 import shutil
@@ -323,12 +328,27 @@ class ItemNameResolver:
         return self.get_rel_path.replace(os.path.sep, "/")
 
 
+class NavigationRenderer:
+    def __init__(self, item_name_resolver, micro_template_engine):
+        self.inr = item_name_resolver
+        self.mte = micro_template_engine
+
+    def make_navigation(self, from_item_name):
+        return \
+        '''
+        <ul>
+            <li>blog</li>
+            <li>about</li>
+        </ul>
+        '''
+
 class SiteRenderer:
     def __init__(self, item_name_resolver, blog_data_source, pages_data_source, micro_template_engine):
         self.inr = item_name_resolver
         self.blog = blog_data_source
         self.pages = pages_data_source
         self.mte = micro_template_engine
+        self.navR = NavigationRenderer(self.inr, self.mte)
     
     def render(self):
         self.__render_blog()
@@ -344,18 +364,19 @@ class SiteRenderer:
         posts_html = []
         for post in posts:
             posts_html.append( self.mte.render_post(post.title, post.content) )
-
+        
+        post_list_iname = ItemName.from_str("blog:index")
         blog_html = self.mte.render_blog(os.linesep.join(posts_html))
-        site_html = self.mte.render_site(self.__make_navigation(), blog_html)
+        site_html = self.mte.render_site(self.make_navigation(post_list_iname), blog_html)
 
-        filename = self.inr.get_abs_path(ItemName.from_str("blog:index"))
+        filename = self.inr.get_abs_path(post_list_iname)
         self.__write_file(filename, site_html)
 
     def __render_blog_post(self, post):
         filename = self.inr.get_abs_path(post.name)
         post_html = self.mte.render_post(post.title, post.content)
         page_html = self.mte.render_page(post.content)
-        site_html = self.mte.render_site(self.__make_navigation(), page_html)
+        site_html = self.mte.render_site(self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
 
     def __render_pages(self):
@@ -366,7 +387,7 @@ class SiteRenderer:
     def __render_page(self, page):
         filename = self.inr.get_abs_path(page.name)
         page_html = self.mte.render_page(page.content)
-        site_html = self.mte.render_site(self.__make_navigation(), page_html)
+        site_html = self.mte.render_site(self.make_navigation(page.name), page_html)
         self.__write_file(filename, site_html)
 
     def __write_file(self, filename, content):
@@ -376,20 +397,12 @@ class SiteRenderer:
             os.makedirs(dirname)
 
         f = open(filename, "wt")
-        f.write(content)
+        f.write(content.encode("utf8"))
         f.close()
 
 
-    def __make_navigation(self):
-        return \
-        '''
-        <ul>
-            <li>blog</li>
-            <li>pages</li>
-        </ul>
-        '''
-        
-
+    def make_navigation(self, from_item_name):
+        return self.navR.make_navigation(from_item_name)
 
 
 
