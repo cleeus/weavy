@@ -10,6 +10,10 @@ import os
 import shutil
 import datetime
 import re
+try:
+    from ConfigParser import SafeConfigParser as ConfigParser
+except:
+    from configparser import SafeConfigParser as ConfigParser
 
 class WeavyError(Exception):
     pass
@@ -32,7 +36,8 @@ class SiteCategories:
     BLOG = "blog"
     PAGES = "page"
     MEDIA = "media"
-    categories = [BLOG, PAGES, MEDIA]
+    FEEDS = "feed"
+    categories = [BLOG, PAGES, MEDIA, FEEDS]
 
 class MicroTemplateEngine:
     def __init__(self, template_dir, item_name_resolver):
@@ -47,15 +52,17 @@ class MicroTemplateEngine:
         self.__load_tpl('page', 'html')
         self.__load_tpl('nav_level', 'html')
         self.__load_tpl('nav_node', 'html')
+        self.__load_tpl('blog_rss', 'xml')
+        self.__load_tpl('post_rss', 'xml')
 
     def __load_tpl(self, template_name, file_ending):
-        filename = '%s/_%s.%s' % (self.template_dir, template_name, file_ending)
+        filename = os.path.join(self.template_dir, '_%s.%s' % (template_name, file_ending))
         self.tpl[template_name] = read_file(filename)
     
     def __render(self, template, data, from_item_name):
         temp = self.tpl[template]
         for key, value in data.items():
-            temp = temp.replace('{{%s}}' % key, value, 1)
+            temp = temp.replace('{{%s}}' % key, value)
         
         urls = []
         for cat in SiteCategories.categories:
@@ -67,17 +74,32 @@ class MicroTemplateEngine:
 
         return temp
 
+
     def render_post(self, from_item_name, title, postdate, posturl, content):
-        return self.__render('post', {\
+        return self.__render_post('post', from_item_name, title, postdate, posturl, content)
+    
+    def render_post_rss(self, from_item_name, title, postdate, posturl, content):
+        return self.__render_post('post_rss', from_item_name, title, postdate, posturl, content)
+
+    def __render_post(self, template_name, from_item_name, title, postdate, posturl, content):
+        return self.__render(template_name, {\
             'title':title, \
             'postdate':postdate, \
             'posturl':posturl, \
             'content':content \
         }, from_item_name)
 
+
     def render_blog(self, from_item_name, content):
-        return self.__render('blog', {'content':content}, from_item_name)
+        return self.__render_blog('blog', from_item_name, content)
     
+    def render_blog_rss(self, from_item_name, content):
+        return self.__render_blog('blog_rss', from_item_name, content)
+
+    def __render_blog(self, template_name, from_item_name, content):
+        return self.__render(template_name, {'content':content}, from_item_name)
+
+
     def render_site(self, from_item_name, navigation, content):
         return self.__render('site', {'navigation':navigation, 'content':content}, from_item_name)
 
@@ -367,18 +389,25 @@ class DataSources:
         self.media = media_data_source
 
 class ItemNameResolver:
-    def __init__(self, out_dir):
+    def __init__(self, out_dir, base_url):
         self.out_dir = out_dir
+        self.base_url = base_url
 
-    def get_abs_path(self, item_name):
+    def __get_outdir_path(self, item_name):
         if item_name.category == SiteCategories.BLOG:
-            return os.path.join( self.out_dir, os.path.join("blog", '%s.html' % item_name.name) )
+            return os.path.join("blog", '%s.html' % item_name.name)
 
         if item_name.category == SiteCategories.PAGES:
-            return os.path.join( self.out_dir, '%s.html' % item_name.name )
+            return '%s.html' % item_name.name
 
         if item_name.category == SiteCategories.MEDIA:
-            return os.path.join( self.out_dir, os.path.join("media", item_name.name) )
+            return os.path.join("media", item_name.name)
+
+        if item_name.category == SiteCategories.FEEDS:
+            return os.path.join("feeds", '%s.xml' % item_name.name)
+
+    def get_abs_path(self, item_name):
+        return os.path.join(self.out_dir, self.__get_outdir_path(item_name))
 
     def get_rel_path(self, item_name, rel_to):
         if isinstance(rel_to, ItemName):
@@ -390,7 +419,9 @@ class ItemNameResolver:
 
     def get_rel_path_http(self, item_name, rel_to):
         return self.get_rel_path(item_name, rel_to).replace("\\", "/")
-
+    
+    def get_abs_url(self, item_name):
+        return '%s%s' % (self.base_url, self.__get_outdir_path(item_name))
 
 class NavTreeNode:
     def __init__(self, visual_text, linked_item_name):
@@ -497,6 +528,7 @@ class SiteRenderer:
         for post in posts:
             self.__render_blog_post(post)
         self.__render_blog_htmlview(posts)
+        self.__render_blog_rssview(posts)
 
     def __render_blog_htmlview(self, posts):
         post_list_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
@@ -511,6 +543,18 @@ class SiteRenderer:
 
         filename = self.inr.get_abs_path(post_list_iname)
         self.__write_file(filename, site_html)
+
+    def __render_blog_rssview(self, posts):
+        feed_iname = ItemName.from_parts(SiteCategories.FEEDS, "blog")
+        posts_xml = []
+        for post in posts:
+            post_url = self.inr.get_rel_path_http(post.name, feed_iname)
+            post_datetime = self.__make_post_date(post)
+            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post.content) )
+
+        feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml))
+        filename = self.inr.get_abs_path(feed_iname)
+        self.__write_file(filename, feed_xml)
 
     def __render_blog_post(self, post):
         filename = self.inr.get_abs_path(post.name)
@@ -562,6 +606,19 @@ class SiteRenderer:
         return self.navR.make_navigation(from_item_name)
 
 
+class SiteConfig:
+    def __init__(self, config_filename):
+        self.config_file = config_filename
+        self.baseurl = None
+
+    def load(self):
+        parser = ConfigParser()
+        parser.read(self.config_filename)
+        self.baseurl = parser.get("weavy", "baseurl")
+
+    def get_baseurl(self):
+        return self.baseurl
+        
 
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
@@ -569,9 +626,12 @@ def erase_dir_contents(pathname):
 
 def main():
     floc = FolderLocator()
-   
+  
+    log('loading site.conf...')
+    config = SiteConfig(os.path.join(floc.get_in_dir(), "site.conf"))
+
     out_dir = floc.get_out_dir()
-    log('cleaning output dir: %s' % out_dir)
+    log('cleaning output dir %s...' % out_dir)
     erase_dir_contents(out_dir)
     
     log('loading blog data...')
@@ -589,7 +649,7 @@ def main():
     media_data = MediaDataSource(media_dir)
     media_data.load_data()
 
-    inr = ItemNameResolver(out_dir)
+    inr = ItemNameResolver(out_dir, config.get_baseurl())
     ds = DataSources(blog_data, pages_data, media_data)
 
     log('loading templates...')

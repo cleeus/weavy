@@ -1,0 +1,16 @@
+<item>
+	<title>{{title}}</title>
+	<link>{{posturl}}</link>
+	<pubDate>{{postdate}}</pubDate>
+	<description>
+	<![CDATA[
+{{content}}
+	]]>
+	</description>
+	<content:encoded>
+	<![CDATA[
+{{content}}
+	]]>
+	</content:encoded>
+</item>
+
