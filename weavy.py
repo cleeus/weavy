@@ -168,8 +168,13 @@ class DirectoryLister:
             for dirname in dirnames:
                 self.dirs.append( os.path.join(dirpath, dirname) )
             for filename in filenames:
-                self.files.append( os.path.join(dirpath, filename) )
-        
+                if self.__is_visible_file(filename):
+                    self.files.append( os.path.join(dirpath, filename) )
+    
+    def __is_visible_file(self, path):
+        filename = os.path.basename(path)
+        return not filename.startswith(".")
+
     def get_files(self, relative=True):
         if not relative:
             return self.files
