@@ -91,13 +91,18 @@ class MicroTemplateEngine:
 
 
     def render_blog(self, from_item_name, content):
-        return self.__render_blog('blog', from_item_name, content)
+        return self.__render_blog('blog', from_item_name, content, "", "", "")
     
-    def render_blog_rss(self, from_item_name, content):
-        return self.__render_blog('blog_rss', from_item_name, content)
+    def render_blog_rss(self, from_item_name, content, site_baseurl, site_title, site_description):
+        return self.__render_blog('blog_rss', from_item_name, content, site_baseurl, site_title, site_description)
 
-    def __render_blog(self, template_name, from_item_name, content):
-        return self.__render(template_name, {'content':content}, from_item_name)
+    def __render_blog(self, template_name, from_item_name, content, site_baseurl, site_title, site_description):
+        return self.__render(template_name, { \
+            'content':content, \
+            'baseurl':site_baseurl, \
+            'sitetitle':site_title, \
+            'sitedescription':site_description \
+        }, from_item_name)
 
 
     def render_site(self, from_item_name, navigation, content):
@@ -510,12 +515,13 @@ class NavigationRenderer:
             self.__recursive_add_path(child, visual_path[1:])
 
 class SiteRenderer:
-    def __init__(self, item_name_resolver, data_sources, micro_template_engine):
+    def __init__(self, item_name_resolver, data_sources, micro_template_engine, site_config):
         self.inr = item_name_resolver
         self.blog = data_sources.blog
         self.pages = data_sources.pages
         self.media = data_sources.media
         self.mte = micro_template_engine
+        self.config = site_config
         self.navR = NavigationRenderer(self.inr, data_sources, self.mte)
     
     def render(self):
@@ -548,11 +554,15 @@ class SiteRenderer:
         feed_iname = ItemName.from_parts(SiteCategories.FEEDS, "blog")
         posts_xml = []
         for post in posts:
-            post_url = self.inr.get_rel_path_http(post.name, feed_iname)
+            post_url = self.inr.get_abs_url(post.name)
             post_datetime = self.__make_post_date(post)
             posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post.content) )
 
-        feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml))
+        feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml), \
+            self.config.get_baseurl(), \
+            self.config.get_site_title(), \
+            self.config.get_site_description() \
+        )
         filename = self.inr.get_abs_path(feed_iname)
         self.__write_file(filename, feed_xml)
 
@@ -610,14 +620,24 @@ class SiteConfig:
     def __init__(self, config_filename):
         self.config_file = config_filename
         self.baseurl = None
+        self.site_title = None
+        self.site_description = None
 
     def load(self):
         parser = ConfigParser()
-        parser.read(self.config_filename)
+        parser.read(self.config_file)
         self.baseurl = parser.get("weavy", "baseurl")
+        self.site_title = parser.get("weavy", "site_title")
+        self.site_description = parser.get("weavy", "site_description")
 
     def get_baseurl(self):
         return self.baseurl
+
+    def get_site_title(self):
+        return self.site_title
+    
+    def get_site_description(self):
+        return self.site_description
         
 
 def erase_dir_contents(pathname):
@@ -629,6 +649,7 @@ def main():
   
     log('loading site.conf...')
     config = SiteConfig(os.path.join(floc.get_in_dir(), "site.conf"))
+    config.load()
 
     out_dir = floc.get_out_dir()
     log('cleaning output dir %s...' % out_dir)
@@ -658,7 +679,7 @@ def main():
     mte.load_all_templates() 
     
     log('rendering site...')
-    siteR = SiteRenderer(inr, ds, mte)
+    siteR = SiteRenderer(inr, ds, mte, config)
     siteR.render()
 
     return 0
