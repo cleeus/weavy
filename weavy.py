@@ -9,6 +9,7 @@ import sys
 import os
 import shutil
 import datetime
+import time
 import re
 try:
     from ConfigParser import SafeConfigParser as ConfigParser
@@ -192,7 +193,7 @@ class DirectoryLister:
 def parse_datetime(datestring):
     dt = None
 
-    formats = ["%Y/%m/%d"]
+    formats = ["%Y/%m/%d", "%Y/%m/%d %H:%M", "%Y%m%dT%H%MZ"]
     for fmt in formats:
         try:
             dt = datetime.datetime.strptime(datestring, fmt)
@@ -332,17 +333,20 @@ class BlogDataSource:
         post.set_name_from_filename(SiteCategories.BLOG, filename)
         post.path = os.path.join(self.blog_dir, filename)
         post.set_renderas_from_filename(filename)
-        post.created = self.__datetime_from_filename(filename)
-        post_data = read_file(os.path.join(self.blog_dir, filename))
+        abs_filename = os.path.join(self.blog_dir, filename)
+        post.created = self.__datetime_from_filename(abs_filename)
+        post_data = read_file(abs_filename)
         metadata, content = parse_metadata(post_data)
         post.content = content 
         post.set_metadata(metadata)
         return post
 
-    def __datetime_from_filename(self, filename):
-        datestr = os.path.dirname(filename)
+    def __datetime_from_filename(self, abs_filename):
+        datestr = os.path.dirname(abs_filename)
         datestr_parts = datestr.split(os.path.sep)
-        date = datetime.datetime(int(datestr_parts[0]), int(datestr_parts[1]), int(datestr_parts[2]))
+        date = datetime.datetime(int(datestr_parts[-3]), int(datestr_parts[-2]), int(datestr_parts[-1]))
+        cdate = datetime.datetime.fromtimestamp( os.path.getctime(abs_filename) )
+        date = datetime.datetime(date.year, date.month, date.day, cdate.hour, cdate.minute, cdate.second)
         return date 
 
 
@@ -581,10 +585,11 @@ class SiteRenderer:
         self.__write_file(filename, site_html)
     
     def __make_post_date(self, post):
-        if post.created.hour == 0 and post.created.minute == 0:
-            return post.created.strftime('%Y/%m/%d')
-        else:
-            return post.created.strftime('%Y/%m/%d %H:%M')
+        return post.created.ctime()
+        #if post.created.hour == 0 and post.created.minute == 0:
+        #    return post.created.strftime('%Y/%m/%d')
+        #else:
+        #    return post.created.strftime('%Y/%m/%d %H:%M')
 
     def __render_pages(self):
         pages = self.pages.get_pages()
