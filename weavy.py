@@ -296,7 +296,7 @@ class SiteItem:
         if metadata.has_key("last_changed"):
             self.last_changed = parse_datetime(metadata["last_changed"])
         if metadata.has_key("created"):
-            self.created = parse_datetime(metadata["last_changed"])
+            self.created = parse_datetime(metadata["created"])
         if metadata.has_key("author"):
             self.author = metadata["author"]
     
