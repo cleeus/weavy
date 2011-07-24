@@ -15,6 +15,7 @@ try:
     from ConfigParser import SafeConfigParser as ConfigParser
 except:
     from configparser import SafeConfigParser as ConfigParser
+import markdown
 
 class WeavyError(Exception):
     pass
@@ -274,12 +275,11 @@ class SiteItem:
         self.created = None #datetime.datetime object
         self.last_updated = None #datetime.datetime object
         self.content = "" #the raw content
-        self.renderas = "html" #the rendering to use on the content (html/markdown/...)
         self.author = "" #the author
 
     def __str__(self):
-        return '{name:%s, title:%s, created:%s, last_updated:%s, renderas:%s}' % \
-                (self.name, self.title, self.created, self.last_updated, self.renderas)
+        return '{name:%s, title:%s, created:%s, last_updated:%s}' % \
+                (self.name, self.title, self.created, self.last_updated)
     
     def set_name_from_filename(self, site_category, filename):
         if site_category == SiteCategories.MEDIA:
@@ -300,15 +300,11 @@ class SiteItem:
         if metadata.has_key("author"):
             self.author = metadata["author"]
     
-    def set_renderas_from_filename(self, filename):
-        fileext = os.path.splitext(filename)
-        fileext = fileext[1].replace(".", "")
-        if fileext != "":
-            self.renderas = fileext
-        else:
-            self.renderas = "html"
-
-
+def filter_content(content, filename):
+    if filename.endswith(".markdown"):
+        md = markdown.Markdown(safe_mode=True, output_format='xhtml1')
+        content = md.convert(content)
+    return content
 
 class BlogDataSource:
     def __init__(self, blog_dir):
@@ -341,12 +337,11 @@ class BlogDataSource:
         post = SiteItem()
         post.set_name_from_filename(SiteCategories.BLOG, filename)
         post.path = os.path.join(self.blog_dir, filename)
-        post.set_renderas_from_filename(filename)
         abs_filename = os.path.join(self.blog_dir, filename)
         post.created = self.__datetime_from_filename(abs_filename)
         post_data = read_file(abs_filename)
         metadata, content = parse_metadata(post_data)
-        post.content = content 
+        post.content = filter_content(content, filename)
         post.set_metadata(metadata)
         return post
 
@@ -379,7 +374,7 @@ class PagesDataSource:
         page.path = os.path.join( self.pages_dir, filename )
         page_data = read_file( os.path.join( self.pages_dir, filename) )
         metadata, content = parse_metadata(page_data)
-        page.content = content
+        page.content = filter_content(content, filename)
         page.set_metadata(metadata)
         return page
 
