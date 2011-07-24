@@ -585,7 +585,7 @@ class SiteRenderer:
         self.__write_file(filename, site_html)
     
     def __make_post_date(self, post):
-        return post.created.ctime()
+        return post.created.isoformat().rsplit(":", 1)[0]
         #if post.created.hour == 0 and post.created.minute == 0:
         #    return post.created.strftime('%Y/%m/%d')
         #else:
