@@ -326,7 +326,16 @@ class BlogDataSource:
         return self.posts[name]
 
     def get_posts(self):
-        return [ v for _,v in self.posts.items() ]
+        post_list = [ v for _,v in self.posts.items() ]
+        def cmp_created(x,y):
+            if x.created < y.created:
+                return -1
+            elif x.created == y.created:
+                return 0
+            else:
+                return 1
+        post_list.sort(cmp = cmp_created, reverse=True)
+        return post_list
 
     def __make_post(self, filename):
         post = SiteItem()
