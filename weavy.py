@@ -299,11 +299,12 @@ class SiteItem:
             self.created = parse_datetime(metadata["created"])
         if metadata.has_key("author"):
             self.author = metadata["author"]
-    
+            
+            
+_mdproc = markdown.Markdown(safe_mode=True, extensions=['codehilite'], output_format='xhtml1')
 def filter_content(content, filename):
     if filename.endswith(".markdown"):
-        md = markdown.Markdown(safe_mode=False, extensions=['codehilite'], output_format='xhtml1')
-        content = md.convert(content)
+        content = _mdproc.convert(content)
     return content
 
 class BlogDataSource:
