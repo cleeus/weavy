@@ -302,7 +302,7 @@ class SiteItem:
     
 def filter_content(content, filename):
     if filename.endswith(".markdown"):
-        md = markdown.Markdown(safe_mode=True, output_format='xhtml1')
+        md = markdown.Markdown(safe_mode=False, extensions=['codehilite'], output_format='xhtml1')
         content = md.convert(content)
     return content
 
