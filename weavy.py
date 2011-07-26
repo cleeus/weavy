@@ -350,7 +350,7 @@ class BlogDataSource:
         datestr = os.path.dirname(abs_filename)
         datestr_parts = datestr.split(os.path.sep)
         date = datetime.datetime(int(datestr_parts[-3]), int(datestr_parts[-2]), int(datestr_parts[-1]))
-        cdate = datetime.datetime.fromtimestamp( os.path.getctime(abs_filename) )
+        cdate = datetime.datetime.fromtimestamp( os.path.getmtime(abs_filename) )
         date = datetime.datetime(date.year, date.month, date.day, cdate.hour, cdate.minute, cdate.second)
         return date 
 
