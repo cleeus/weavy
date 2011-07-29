@@ -77,17 +77,18 @@ class MicroTemplateEngine:
         return temp
 
 
-    def render_post(self, from_item_name, title, postdate, posturl, content):
-        return self.__render_post('post', from_item_name, title, postdate, posturl, content)
+    def render_post(self, from_item_name, title, postdate, posturl, author, content):
+        return self.__render_post('post', from_item_name, title, postdate, posturl, author, content)
     
-    def render_post_rss(self, from_item_name, title, postdate, posturl, content):
-        return self.__render_post('post_rss', from_item_name, title, postdate, posturl, content)
+    def render_post_rss(self, from_item_name, title, postdate, posturl, author, content):
+        return self.__render_post('post_rss', from_item_name, title, postdate, posturl, author, content)
 
-    def __render_post(self, template_name, from_item_name, title, postdate, posturl, content):
+    def __render_post(self, template_name, from_item_name, title, postdate, posturl, author, content):
         return self.__render(template_name, {\
             'title':title, \
             'postdate':postdate, \
             'posturl':posturl, \
+            'postauthor':author, \
             'content':content \
         }, from_item_name)
 
@@ -556,7 +557,7 @@ class SiteRenderer:
         for post in posts:
             post_url = self.inr.get_rel_path_http(post.name, post_list_iname) 
             post_datetime = self.__make_post_date(post)
-            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post.content) )
+            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post.author, post.content) )
         
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
@@ -570,7 +571,7 @@ class SiteRenderer:
         for post in posts:
             post_url = self.inr.get_abs_url(post.name)
             post_datetime = self.__make_post_date(post)
-            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post.content) )
+            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post.author, post.content) )
 
         feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml), \
             self.config.get_baseurl(), \
@@ -584,7 +585,7 @@ class SiteRenderer:
         filename = self.inr.get_abs_path(post.name)
         post_datetime = self.__make_post_date(post)
         post_url = self.inr.get_rel_path_http(post.name, post.name)
-        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post.content)
+        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post.author, post.content)
         page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)

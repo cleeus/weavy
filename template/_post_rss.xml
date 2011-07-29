@@ -1,6 +1,7 @@
 <item>
 	<title>{{title}}</title>
 	<link>{{posturl}}</link>
+	<author>{{postauthor}}</author>
 	<pubDate>{{postdate}}</pubDate>
 	<description>
 	<![CDATA[

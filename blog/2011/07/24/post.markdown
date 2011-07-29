@@ -1,6 +1,7 @@
 ---
 title: weavy renders markdown
 created: 2011/07/24 13:58
+author: Kai Dietrich
 ---
 This is a paragraph
 
