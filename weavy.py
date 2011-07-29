@@ -557,7 +557,8 @@ class SiteRenderer:
         for post in posts:
             post_url = self.inr.get_rel_path_http(post.name, post_list_iname) 
             post_datetime = self.__make_post_date(post)
-            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post.author, post.content) )
+            post_author = self.__make_post_author(post)
+            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post.content) )
         
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
@@ -570,8 +571,9 @@ class SiteRenderer:
         posts_xml = []
         for post in posts:
             post_url = self.inr.get_abs_url(post.name)
+            post_author = self.__make_post_author(post)
             post_datetime = self.__make_post_date(post)
-            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post.author, post.content) )
+            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post_author, post.content) )
 
         feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml), \
             self.config.get_baseurl(), \
@@ -585,7 +587,8 @@ class SiteRenderer:
         filename = self.inr.get_abs_path(post.name)
         post_datetime = self.__make_post_date(post)
         post_url = self.inr.get_rel_path_http(post.name, post.name)
-        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post.author, post.content)
+        post_author = self.__make_post_author(post)
+        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post.content)
         page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
@@ -596,6 +599,12 @@ class SiteRenderer:
         #    return post.created.strftime('%Y/%m/%d')
         #else:
         #    return post.created.strftime('%Y/%m/%d %H:%M')
+    
+    def __make_post_author(self, post):
+        if post.author == "" or post.author == None:
+            return self.config.get_site_default_author()
+        else:
+            return post.author
 
     def __render_pages(self):
         pages = self.pages.get_pages()
@@ -638,6 +647,7 @@ class SiteConfig:
         self.baseurl = None
         self.site_title = None
         self.site_description = None
+        self.site_default_author = None
 
     def load(self):
         parser = ConfigParser()
@@ -645,6 +655,7 @@ class SiteConfig:
         self.baseurl = parser.get("weavy", "baseurl")
         self.site_title = parser.get("weavy", "site_title")
         self.site_description = parser.get("weavy", "site_description")
+        self.site_default_author = parser.get("weavy", "site_default_author")
 
     def get_baseurl(self):
         return self.baseurl
@@ -654,7 +665,9 @@ class SiteConfig:
     
     def get_site_description(self):
         return self.site_description
-        
+    
+    def get_site_default_author(self):
+        return self.site_default_author
 
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
