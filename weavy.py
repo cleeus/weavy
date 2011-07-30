@@ -11,6 +11,8 @@ import shutil
 import datetime
 import time
 import re
+import string
+import uuid
 try:
     from ConfigParser import SafeConfigParser as ConfigParser
 except:
@@ -46,6 +48,7 @@ class MicroTemplateEngine:
         self.template_dir = template_dir
         self.inr = item_name_resolver
         self.tpl = {}
+        self.tpl_urls = {} # placeholder->itemname string
 
     def load_all_templates(self):
         self.__load_tpl('site', 'html')
@@ -58,24 +61,37 @@ class MicroTemplateEngine:
         self.__load_tpl('nav_node', 'html')
         self.__load_tpl('blog_rss', 'xml')
         self.__load_tpl('post_rss', 'xml')
+    
+    def __make_unique_placeholder(self, data):
+        temp = data[0]
+        while data.find(temp) != -1:
+            temp = "random_placeholder_" + str(uuid.uuid1()).replace("-", "_")
+        return temp
 
     def __load_tpl(self, template_name, file_ending):
         filename = os.path.join(self.template_dir, '_%s.%s' % (template_name, file_ending))
-        self.tpl[template_name] = read_file(filename)
-    
-    def __render(self, template, data, from_item_name):
-        temp = self.tpl[template]
-        for key, value in data.items():
-            temp = temp.replace('{{%s}}' % key, value)
+        tpl_data = read_file(filename)
         
-        urls = []
+        url_placeholders = []
         for cat in SiteCategories.categories:
-            urls.extend( re.findall('\{\{%s:.+\}\}' % cat, temp) )
+            url_placeholders.extend( re.findall('\$\{%s:.+\}' % cat, tpl_data) )
+        
+        for url_ph in url_placeholders:
+            item_name = url_ph[2:-1]
+            new_ph = self.__make_unique_placeholder(tpl_data)
+            self.tpl_urls[new_ph] = item_name
+            tpl_data = tpl_data.replace( url_ph, '${%s}'%new_ph )
+        
+        self.tpl[template_name] = string.Template( tpl_data )
 
-        for url in urls:
-            item_name = url[2:-2]
-            temp = temp.replace(url, self.inr.get_rel_path_http(ItemName.from_str(item_name), from_item_name))
+    def __render(self, template, data, from_item_name):
+        tpl = self.tpl[template]
+        #add new placeholders to data
+        data = dict(data)
+        for new_placeholder,item_name_str in self.tpl_urls.items():
+            data[new_placeholder] = self.inr.get_rel_path_http(ItemName.from_str(item_name_str), from_item_name) 
 
+        temp = tpl.safe_substitute(data)
         return temp
 
     
