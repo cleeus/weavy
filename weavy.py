@@ -52,6 +52,7 @@ class MicroTemplateEngine:
         self.__load_tpl('blog', 'html')
         self.__load_tpl('post', 'html')
         self.__load_tpl('page', 'html')
+        self.__load_tpl('tag',  'html')
         self.__load_tpl('nav_level', 'html')
         self.__load_tpl('nav_node', 'html')
         self.__load_tpl('blog_rss', 'xml')
@@ -76,19 +77,23 @@ class MicroTemplateEngine:
 
         return temp
 
+    
+    def render_tag(self, from_item_name, tag_text):
+        return self.__render('tag', {'tagtext':tag_text}, from_item_name)
 
-    def render_post(self, from_item_name, title, postdate, posturl, author, content):
-        return self.__render_post('post', from_item_name, title, postdate, posturl, author, content)
+    def render_post(self, from_item_name, title, postdate, posturl, author, posttags, content):
+        return self.__render_post('post', from_item_name, title, postdate, posturl, author, posttags, content)
     
     def render_post_rss(self, from_item_name, title, postdate, posturl, author, content):
-        return self.__render_post('post_rss', from_item_name, title, postdate, posturl, author, content)
+        return self.__render_post('post_rss', from_item_name, title, postdate, posturl, author, "", content)
 
-    def __render_post(self, template_name, from_item_name, title, postdate, posturl, author, content):
+    def __render_post(self, template_name, from_item_name, title, postdate, posturl, author, posttags, content):
         return self.__render(template_name, {\
             'title':title, \
             'postdate':postdate, \
             'posturl':posturl, \
             'postauthor':author, \
+            'posttags':posttags, \
             'content':content \
         }, from_item_name)
 
@@ -277,6 +282,7 @@ class SiteItem:
         self.last_updated = None #datetime.datetime object
         self.content = "" #the raw content
         self.author = "" #the author
+        self.tags = [] #a list of strings that are tags
 
     def __str__(self):
         return '{name:%s, title:%s, created:%s, last_updated:%s}' % \
@@ -300,6 +306,9 @@ class SiteItem:
             self.created = parse_datetime(metadata["created"])
         if metadata.has_key("author"):
             self.author = metadata["author"]
+        if metadata.has_key("tags"):
+            tags_str = metadata["tags"]
+            self.tags.extend( [ s.strip() for s in tags_str.split(",") ] )
             
             
 _mdproc = markdown.Markdown(safe_mode=True, extensions=['codehilite'], output_format='xhtml1')
@@ -558,7 +567,8 @@ class SiteRenderer:
             post_url = self.inr.get_rel_path_http(post.name, post_list_iname) 
             post_datetime = self.__make_post_date(post)
             post_author = self.__make_post_author(post)
-            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post.content) )
+            post_tags = self.__render_tags(post_list_iname, post)
+            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post.content) )
         
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
@@ -588,10 +598,18 @@ class SiteRenderer:
         post_datetime = self.__make_post_date(post)
         post_url = self.inr.get_rel_path_http(post.name, post.name)
         post_author = self.__make_post_author(post)
-        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post.content)
+        post_tags = self.__render_tags(post.name, post)
+        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post.content)
         page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
+
+    def __render_tags(self, from_item_name, post):
+        tags_html = []
+        for tag in post.tags:
+            tags_html.append( self.mte.render_tag(from_item_name, tag) )
+        return ''.join(tags_html)
+
     
     def __make_post_date(self, post):
         return post.created.isoformat().rsplit(":", 1)[0]

@@ -2,6 +2,7 @@
 title: weavy renders markdown
 created: 2011/07/24 13:58
 author: Kai Dietrich
+tags: markdown, foo, bar
 ---
 This is a paragraph
 
