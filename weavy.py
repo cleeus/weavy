@@ -53,6 +53,7 @@ class MicroTemplateEngine:
         self.__load_tpl('post', 'html')
         self.__load_tpl('page', 'html')
         self.__load_tpl('tag',  'html')
+        self.__load_tpl('tag_box', 'html')
         self.__load_tpl('nav_level', 'html')
         self.__load_tpl('nav_node', 'html')
         self.__load_tpl('blog_rss', 'xml')
@@ -80,6 +81,9 @@ class MicroTemplateEngine:
     
     def render_tag(self, from_item_name, tag_text):
         return self.__render('tag', {'tagtext':tag_text}, from_item_name)
+    
+    def render_tag_box(self, from_item_name, tags_content):
+        return self.__render('tag_box', {'tagscontent':tags_content}, from_item_name)
 
     def render_post(self, from_item_name, title, postdate, posturl, author, posttags, content):
         return self.__render_post('post', from_item_name, title, postdate, posturl, author, posttags, content)
@@ -608,7 +612,11 @@ class SiteRenderer:
         tags_html = []
         for tag in post.tags:
             tags_html.append( self.mte.render_tag(from_item_name, tag) )
-        return ''.join(tags_html)
+        tags_html = ''.join(tags_html)
+        if len(tags_html) > 0:
+            return self.mte.render_tag_box(from_item_name, tags_html)
+        else:
+            return ""
 
     
     def __make_post_date(self, post):
