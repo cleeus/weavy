@@ -3,11 +3,11 @@
 	xmlns:content="http://purl.org/rss/1.0/modules/content/"
 >
 <channel>
-	<title>{{sitetitle}}</title>
-	<link>{{baseurl}}</link>
-	<description>{{sitedescription}}</description>
+	<title>${sitetitle}</title>
+	<link>${baseurl}</link>
+	<description>${sitedescription}</description>
 	
-{{content}}
+${content}
 
 </channel>
 </rss>

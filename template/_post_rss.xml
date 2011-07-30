@@ -1,16 +1,16 @@
 <item>
-	<title>{{title}}</title>
-	<link>{{posturl}}</link>
-	<author>{{postauthor}}</author>
-	<pubDate>{{postdate}}</pubDate>
+	<title>${title}</title>
+	<link>${posturl}$</link>
+	<author>${postauthor}</author>
+	<pubDate>${postdate}</pubDate>
 	<description>
 	<![CDATA[
-{{content}}
+${content}
 	]]>
 	</description>
 	<content:encoded>
 	<![CDATA[
-{{content}}
+${content}
 	]]>
 	</content:encoded>
 </item>
