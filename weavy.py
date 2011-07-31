@@ -13,6 +13,7 @@ import time
 import re
 import string
 import uuid
+from email import utils as email_utils
 try:
     from ConfigParser import SafeConfigParser as ConfigParser
 except:
@@ -602,7 +603,7 @@ class SiteRenderer:
         for post in posts:
             post_url = self.inr.get_abs_url(post.name)
             post_author = self.__make_post_author(post)
-            post_datetime = self.__make_post_date(post)
+            post_datetime = self.__make_post_date_rss(post)
             posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post_author, post.content) )
 
         feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml), \
@@ -635,12 +636,13 @@ class SiteRenderer:
             return ""
 
     
+    def __make_post_date_rss(self, post):
+        dt_tuple = post.created.timetuple()
+        dt_stamp = time.mktime(dt_tuple)
+        return email_utils.formatdate(dt_stamp)
+    
     def __make_post_date(self, post):
         return post.created.isoformat().rsplit(":", 1)[0]
-        #if post.created.hour == 0 and post.created.minute == 0:
-        #    return post.created.strftime('%Y/%m/%d')
-        #else:
-        #    return post.created.strftime('%Y/%m/%d %H:%M')
     
     def __make_post_author(self, post):
         if post.author == "" or post.author == None:
