@@ -75,7 +75,7 @@ class MicroTemplateEngine:
         
         url_placeholders = []
         for cat in SiteCategories.categories:
-            url_placeholders.extend( re.findall('\$\{%s:.+\}' % cat, tpl_data) )
+            url_placeholders.extend( re.findall('\$\{%s:[^}]+\}' % cat, tpl_data) )
         
         for url_ph in url_placeholders:
             item_name = url_ph[2:-1]
