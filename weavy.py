@@ -94,7 +94,27 @@ class MicroTemplateEngine:
 
         temp = tpl.safe_substitute(data)
         return temp
+    
+    def render_content(self, from_item_name, content):
+        url_placeholders = []
+        for cat in SiteCategories.categories:
+            url_placeholders.extend( re.findall('\$\{%s:[^}]+\}' % cat, content) )
+        
+        urlmap = {} #placeholder->item_name
+        for url_ph in url_placeholders:
+            item_name = url_ph[2:-1]
+            new_ph = self.__make_unique_placeholder(content)
+            urlmap[new_ph] = item_name
+            content = content.replace( url_ph, '${%s}'%new_ph )
+        
+        data = {}
+        for placeholder, item_name_str in urlmap.items():
+            data[placeholder] = self.inr.get_rel_path_http(ItemName.from_str(item_name_str), from_item_name)
 
+        template = string.Template(content)
+        rendered_content = template.safe_substitute(data)
+
+        return rendered_content
     
     def render_tag(self, from_item_name, tag_text):
         return self.__render('tag', {'tagtext':tag_text}, from_item_name)
@@ -332,7 +352,7 @@ class SiteItem:
             self.tags.extend( [ s.strip() for s in tags_str.split(",") ] )
             
             
-_mdproc = markdown.Markdown(safe_mode=True, extensions=['codehilite'], output_format='xhtml1')
+_mdproc = markdown.Markdown(safe_mode=False, extensions=['codehilite'], output_format='xhtml1')
 def filter_content(content, filename):
     if filename.endswith(".markdown"):
         content = _mdproc.convert(content)
@@ -589,7 +609,8 @@ class SiteRenderer:
             post_datetime = self.__make_post_date(post)
             post_author = self.__make_post_author(post)
             post_tags = self.__render_tags(post_list_iname, post)
-            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post.content) )
+            post_content = self.mte.render_content(post_list_iname, post.content)
+            posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post_content) )
         
         blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
         site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
@@ -604,7 +625,8 @@ class SiteRenderer:
             post_url = self.inr.get_abs_url(post.name)
             post_author = self.__make_post_author(post)
             post_datetime = self.__make_post_date_rss(post)
-            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post_author, post.content) )
+            post_content = self.mte.render_content(feed_iname, post.content)
+            posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post_author, post_content) )
 
         feed_xml = self.mte.render_blog_rss(feed_iname, os.linesep.join(posts_xml), \
             self.config.get_baseurl(), \
@@ -620,7 +642,8 @@ class SiteRenderer:
         post_url = self.inr.get_rel_path_http(post.name, post.name)
         post_author = self.__make_post_author(post)
         post_tags = self.__render_tags(post.name, post)
-        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post.content)
+        post_content = self.mte.render_content(post.name, post.content)
+        post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post_content)
         page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
         self.__write_file(filename, site_html)
@@ -657,7 +680,8 @@ class SiteRenderer:
 
     def __render_page(self, page):
         filename = self.inr.get_abs_path(page.name)
-        page_html = self.mte.render_page(page.name, page.content)
+        page_content = self.mte.render_content(page.name, page.content)
+        page_html = self.mte.render_page(page.name, page_content)
         site_html = self.mte.render_site(page.name, self.make_navigation(page.name), page_html)
         self.__write_file(filename, site_html)
 
