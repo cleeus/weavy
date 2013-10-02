@@ -621,7 +621,9 @@ class SiteRenderer:
     def __render_blog_rssview(self, posts):
         feed_iname = ItemName.from_parts(SiteCategories.FEEDS, "blog")
         posts_xml = []
-        for post in posts:
+        posts_in_feeds = self.config.get_blog_posts_in_feeds()
+        posts_to_render = posts[0:posts_in_feeds]
+        for post in posts_to_render:
             post_url = self.inr.get_abs_url(post.name)
             post_author = self.__make_post_author(post)
             post_datetime = self.__make_post_date_rss(post)
@@ -726,8 +728,8 @@ class SiteConfig:
         self.site_title = parser.get("weavy", "site_title")
         self.site_description = parser.get("weavy", "site_description")
         self.site_default_author = parser.get("weavy", "site_default_author")
-        self.blog_posts_per_page = parser.get("weavy", "blog_posts_per_page")
-        self.blog_posts_in_feeds = parser.get("weavy", "blog_posts_in_feeds")
+        self.blog_posts_per_page = parser.getint("weavy", "blog_posts_per_page")
+        self.blog_posts_in_feeds = parser.getint("weavy", "blog_posts_in_feeds")
 
     def get_baseurl(self):
         return self.baseurl
