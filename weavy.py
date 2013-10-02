@@ -716,6 +716,8 @@ class SiteConfig:
         self.site_title = None
         self.site_description = None
         self.site_default_author = None
+        self.blog_posts_per_page = 10
+        self.blog_posts_in_feeds = 20
 
     def load(self):
         parser = ConfigParser()
@@ -724,6 +726,8 @@ class SiteConfig:
         self.site_title = parser.get("weavy", "site_title")
         self.site_description = parser.get("weavy", "site_description")
         self.site_default_author = parser.get("weavy", "site_default_author")
+        self.blog_posts_per_page = parser.get("weavy", "blog_posts_per_page")
+        self.blog_posts_in_feeds = parser.get("weavy", "blog_posts_in_feeds")
 
     def get_baseurl(self):
         return self.baseurl
@@ -736,6 +740,12 @@ class SiteConfig:
     
     def get_site_default_author(self):
         return self.site_default_author
+
+    def get_blog_posts_per_page(self):
+        return self.blog_posts_per_page
+
+    def get_blog_posts_in_feeds(self):
+        return self.blog_posts_in_feeds
 
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
