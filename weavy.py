@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # This file is part of weavy.
 # Weavy is licensed under the 2-clause BSD license.
@@ -62,6 +62,8 @@ class MicroTemplateEngine:
         self.__load_tpl('nav_node', 'html')
         self.__load_tpl('blog_rss', 'xml')
         self.__load_tpl('post_rss', 'xml')
+        self.__load_tpl('blog_top_navigation', 'html')
+        self.__load_tpl('blog_bottom_navigation', 'html')
     
     def __make_unique_placeholder(self, data):
         temp = data[0]
@@ -139,14 +141,16 @@ class MicroTemplateEngine:
         }, from_item_name)
 
 
-    def render_blog(self, from_item_name, content):
-        return self.__render_blog('blog', from_item_name, content, "", "", "")
-    
-    def render_blog_rss(self, from_item_name, content, site_baseurl, site_title, site_description):
-        return self.__render_blog('blog_rss', from_item_name, content, site_baseurl, site_title, site_description)
+    def render_blog(self, from_item_name, content, top_navigation, bottom_navigation):
+        return self.__render('blog', {
+            'top_navigation':top_navigation,
+            'content':content,
+            'bottom_navigation':bottom_navigation
+        }, from_item_name)
 
-    def __render_blog(self, template_name, from_item_name, content, site_baseurl, site_title, site_description):
-        return self.__render(template_name, { \
+
+    def render_blog_rss(self, from_item_name, content, site_baseurl, site_title, site_description):
+        return self.__render('blog_rss', { \
             'content':content, \
             'baseurl':site_baseurl, \
             'sitetitle':site_title, \
@@ -165,6 +169,18 @@ class MicroTemplateEngine:
 
     def render_nav_node(self, from_item_name, linkedpage, visualtext, subnavcontent):
         return self.__render('nav_node', {'linkedpage':linkedpage, 'visualtext':visualtext, 'subnavcontent':subnavcontent}, from_item_name)
+
+    def render_blog_top_navigation(self, from_item_name, prev_page_url, next_page_url):
+        return self.__render('blog_top_navigation', {
+            "prev_page_url":prev_page_url,
+            "next_page_url":next_page_url
+            }, from_item_name)
+
+    def render_blog_bottom_navigation(self, from_item_name, prev_page_url, next_page_url):
+        return self.__render('blog_bottom_navigation', {
+            "prev_page_url":prev_page_url,
+            "next_page_url":next_page_url
+            }, from_item_name)
 
 class FolderLocator:
     def __init__(self):
@@ -463,10 +479,10 @@ class ItemNameResolver:
         self.out_dir = out_dir
         self.base_url = base_url
 
-    def __get_outdir_path(self, item_name):
+    def _get_outdir_path(self, item_name):
         if item_name.category == SiteCategories.BLOG:
             return os.path.join("blog", '%s.html' % item_name.name)
-
+        
         if item_name.category == SiteCategories.PAGES:
             return '%s.html' % item_name.name
 
@@ -477,7 +493,7 @@ class ItemNameResolver:
             return os.path.join("feeds", '%s.xml' % item_name.name)
 
     def get_abs_path(self, item_name):
-        return os.path.join(self.out_dir, self.__get_outdir_path(item_name))
+        return os.path.join(self.out_dir, self._get_outdir_path(item_name))
 
     def get_rel_path(self, item_name, rel_to):
         if isinstance(rel_to, ItemName):
@@ -491,7 +507,7 @@ class ItemNameResolver:
         return self.get_rel_path(item_name, rel_to).replace("\\", "/")
     
     def get_abs_url(self, item_name):
-        return '%s%s' % (self.base_url, self.__get_outdir_path(item_name))
+        return '%s%s' % (self.base_url, self._get_outdir_path(item_name))
 
 class NavTreeNode:
     def __init__(self, visual_text, linked_item_name):
@@ -590,43 +606,130 @@ class SiteRenderer:
         self.navR = NavigationRenderer(self.inr, data_sources, self.mte)
     
     def render(self):
-        self.__render_blog()
-        self.__render_pages()
-        self.__render_media()
+        self._render_blog()
+        self._render_pages()
+        self._render_media()
 
-    def __render_blog(self):
+    def _render_blog(self):
         posts = self.blog.get_posts()
         for post in posts:
-            self.__render_blog_post(post)
-        self.__render_blog_htmlview(posts)
-        self.__render_blog_rssview(posts)
+            self._render_blog_post(post)
 
-    def __render_blog_htmlview(self, posts):
-        post_list_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
+        self._render_blog_htmlview(posts)
+        self._render_blog_rssview(posts)
+
+    def _partition_posts(self, posts):
+        """
+        given a list of posts
+        and a posts_per_page value n in the site config,
+        this method will partition the posts into pages such that:
+            - the main_partition contains the n newest (first) posts
+            - older posts are split in chunks of n posts from the back
+        
+        example:
+
+        given
+
+        posts = [1,2,3,4,5,6,7,8]
+        n = 3
+
+        then
+
+        main_partition = [1,2,3]
+        stable_partitions = [
+            [3,4,5],
+            [6,7,8]
+        ]
+
+
+        @param posts a list of posts
+        @return tuple (index_posts, older_posts) where index_posts is a list of posts and older posts is a list of lists of posts
+        """
+        posts_per_page = self.config.get_blog_posts_per_page()
+        #posts = [1,2,3,4,5,6,7,8,9]
+        num_posts = len(posts)
+        main_partition = posts[0:posts_per_page]
+        #print 'num posts: %d' % len(posts)
+        #print 'main partition: [0:%d] = %s' % (posts_per_page, main_partition)
+        stable_partitions = []
+        num_stable_partitions = num_posts / posts_per_page
+        for i in xrange(num_stable_partitions,0,-1):
+            start = num_posts - i * posts_per_page
+            end =  num_posts - (i-1) * posts_per_page
+            partition = posts[start:end]
+            #print 'stable %d = [%d:%d] = %s' % (i,start,end,partition)
+            stable_partitions.append(partition)
+
+        return (main_partition, stable_partitions)
+
+
+
+    def _render_blog_htmlview(self, posts):
+        main_partition,stable_partitions = self._partition_posts(posts)
+        
+        num_partitions = len(stable_partitions)
+
+        blog_index_iname = ItemName.from_parts(SiteCategories.BLOG, "index")
+        if num_partitions > 0:
+            next_page_iname = ItemName.from_parts(SiteCategories.BLOG, 'page%d' % (num_partitions-1) )
+        else:
+            next_page_iname = blog_index_iname
+        self._render_blog_htmlview_page(main_partition, blog_index_iname, blog_index_iname, next_page_iname)
+
+        
+        page_num = num_partitions-1
+        prev_page_iname = blog_index_iname
+        this_page_iname = ItemName.from_parts(SiteCategories.BLOG, 'page%d' % page_num)
+        if page_num > 0:
+            next_page_iname = ItemName.from_parts(SiteCategories.BLOG, 'page%d' % (page_num-1))
+        else:
+            next_page_iname = this_page_iname
+
+        for partition in stable_partitions:
+            self._render_blog_htmlview_page(partition, this_page_iname, prev_page_iname, next_page_iname)
+            page_num -= 1
+            prev_page_iname = this_page_iname
+            this_page_iname = next_page_iname
+            if page_num > 0:
+                next_page_iname = ItemName.from_parts(SiteCategories.BLOG, 'page%d' % (page_num-1))
+
+               
+
+    def _render_blog_htmlview_page(self, posts, this_page_iname, prev_page_iname, next_page_iname):
         posts_html = []
         for post in posts:
-            post_url = self.inr.get_rel_path_http(post.name, post_list_iname) 
-            post_datetime = self.__make_post_date(post)
-            post_author = self.__make_post_author(post)
-            post_tags = self.__render_tags(post_list_iname, post)
-            post_content = self.mte.render_content(post_list_iname, post.content)
+            post_url = self.inr.get_rel_path_http(post.name, this_page_iname) 
+            post_datetime = self._make_post_date(post)
+            post_author = self._make_post_author(post)
+            post_tags = self._render_tags(this_page_iname, post)
+            post_content = self.mte.render_content(this_page_iname, post.content)
             posts_html.append( self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post_content) )
-        
-        blog_html = self.mte.render_blog(post_list_iname, os.linesep.join(posts_html))
-        site_html = self.mte.render_site(post_list_iname, self.make_navigation(post_list_iname), blog_html)
+      
+        prev_page_url = self.inr.get_rel_path_http(prev_page_iname, this_page_iname)
+        next_page_url = self.inr.get_rel_path_http(next_page_iname, this_page_iname)
+        top_navigation = self.mte.render_blog_top_navigation(this_page_iname, prev_page_url, next_page_url)
+        bottom_navigation = self.mte.render_blog_bottom_navigation(this_page_iname, prev_page_url, next_page_url)
 
-        filename = self.inr.get_abs_path(post_list_iname)
-        self.__write_file(filename, site_html)
+        blog_html = self.mte.render_blog(this_page_iname, os.linesep.join(posts_html), top_navigation, bottom_navigation)
 
-    def __render_blog_rssview(self, posts):
+        navigation_html = self.make_navigation(this_page_iname)
+        site_html = self.mte.render_site(this_page_iname, navigation_html, blog_html)
+
+        filename = self.inr.get_abs_path(this_page_iname)
+        #print filename
+        self._write_file(filename, site_html)
+
+
+
+    def _render_blog_rssview(self, posts):
         feed_iname = ItemName.from_parts(SiteCategories.FEEDS, "blog")
         posts_xml = []
         posts_in_feeds = self.config.get_blog_posts_in_feeds()
         posts_to_render = posts[0:posts_in_feeds]
         for post in posts_to_render:
             post_url = self.inr.get_abs_url(post.name)
-            post_author = self.__make_post_author(post)
-            post_datetime = self.__make_post_date_rss(post)
+            post_author = self._make_post_author(post)
+            post_datetime = self._make_post_date_rss(post)
             post_content = self.mte.render_content(feed_iname, post.content)
             posts_xml.append( self.mte.render_post_rss(post.name, post.title, post_datetime, post_url, post_author, post_content) )
 
@@ -636,21 +739,21 @@ class SiteRenderer:
             self.config.get_site_description() \
         )
         filename = self.inr.get_abs_path(feed_iname)
-        self.__write_file(filename, feed_xml)
+        self._write_file(filename, feed_xml)
 
-    def __render_blog_post(self, post):
+    def _render_blog_post(self, post):
         filename = self.inr.get_abs_path(post.name)
-        post_datetime = self.__make_post_date(post)
+        post_datetime = self._make_post_date(post)
         post_url = self.inr.get_rel_path_http(post.name, post.name)
-        post_author = self.__make_post_author(post)
-        post_tags = self.__render_tags(post.name, post)
+        post_author = self._make_post_author(post)
+        post_tags = self._render_tags(post.name, post)
         post_content = self.mte.render_content(post.name, post.content)
         post_html = self.mte.render_post(post.name, post.title, post_datetime, post_url, post_author, post_tags, post_content)
         page_html = self.mte.render_page(post.name, post_html)
         site_html = self.mte.render_site(post.name, self.make_navigation(post.name), page_html)
-        self.__write_file(filename, site_html)
+        self._write_file(filename, site_html)
 
-    def __render_tags(self, from_item_name, post):
+    def _render_tags(self, from_item_name, post):
         tags_html = []
         for tag in post.tags:
             tags_html.append( self.mte.render_tag(from_item_name, tag) )
@@ -661,48 +764,48 @@ class SiteRenderer:
             return ""
 
     
-    def __make_post_date_rss(self, post):
+    def _make_post_date_rss(self, post):
         dt_tuple = post.created.timetuple()
         dt_stamp = time.mktime(dt_tuple)
         return email_utils.formatdate(dt_stamp)
     
-    def __make_post_date(self, post):
+    def _make_post_date(self, post):
         return post.created.isoformat().rsplit(":", 1)[0]
     
-    def __make_post_author(self, post):
+    def _make_post_author(self, post):
         if post.author == "" or post.author == None:
             return self.config.get_site_default_author()
         else:
             return post.author
 
-    def __render_pages(self):
+    def _render_pages(self):
         pages = self.pages.get_pages()
         for page in pages:
-            self.__render_page(page)
+            self._render_page(page)
 
-    def __render_page(self, page):
+    def _render_page(self, page):
         filename = self.inr.get_abs_path(page.name)
         page_content = self.mte.render_content(page.name, page.content)
         page_html = self.mte.render_page(page.name, page_content)
         site_html = self.mte.render_site(page.name, self.make_navigation(page.name), page_html)
-        self.__write_file(filename, site_html)
+        self._write_file(filename, site_html)
 
-    def __render_media(self):
+    def _render_media(self):
         for media_item in self.media.get_medias():
             filename = self.inr.get_abs_path(media_item.name)
-            self.__copy_file(media_item.path, filename)
+            self._copy_file(media_item.path, filename)
 
-    def __write_file(self, filename, content):
-        self.__mkpath_for_file(filename)
+    def _write_file(self, filename, content):
+        self._mkpath_for_file(filename)
         f = open(filename, "wt")
         f.write(content.encode("utf8"))
         f.close()
 
-    def __copy_file(self, src, dst):
-        self.__mkpath_for_file(dst)
+    def _copy_file(self, src, dst):
+        self._mkpath_for_file(dst)
         shutil.copy(src, dst)
         
-    def __mkpath_for_file(self, filename):
+    def _mkpath_for_file(self, filename):
         path = os.path.dirname(filename)
         if not os.path.exists(path):
             os.makedirs(path)
