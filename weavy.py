@@ -7,12 +7,14 @@
 
 import sys
 import os
+import os.path
 import shutil
 import datetime
 import time
 import re
 import string
 import uuid
+import gzip
 from email import utils as email_utils
 try:
     from ConfigParser import SafeConfigParser as ConfigParser
@@ -595,6 +597,59 @@ class NavigationRenderer:
                 root_node.add_child(child)
             self.__recursive_add_path(child, visual_path[1:])
 
+
+def mkpath_for_file(filename):
+    path = os.path.dirname(filename)
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+class RawOutputTarget:
+    def write_file(self, filename, content):
+        mkpath_for_file(filename)
+        f = open(filename, "wb")
+        f.write(content)
+        f.close()
+
+    def copy_file(self, src, dst):
+        mkpath_for_file(dst)
+        shutil.copy(src, dst)
+            
+class GzipStaticOutputTarget:
+    def __init__(self, gzip_file_extensions):
+        self.gzip_file_extensions = [".%s" % e for e in gzip_file_extensions]
+        self.rawout = RawOutputTarget()
+
+    def write_file(self, filename, content):
+        self.rawout.write_file(filename, content)
+        if self._is_gzip_file(filename):
+            gzip_filename = self._gzip_filename(filename)
+            f = gzip.GzipFile(gzip_filename, "wb", 9)
+            f.write(content)
+            f.close()
+        
+    def copy_file(self, src, dst):
+        self.rawout.copy_file(src, dst)
+        if self._is_gzip_file(dst):
+            gzip_filename = self._gzip_filename(dst)
+            in_file = open(src, "rb")
+            gzip_out_file = gzip.GzipFile(gzip_filename, "wb", 9)
+            shutil.copyfileobj(in_file, gzip_out_file)
+            in_file.close()
+            gzip_out_file.close()
+
+    def _is_gzip_file(self, filename):
+        _,extension = os.path.splitext(filename)
+        for e in self.gzip_file_extensions:
+            if e == extension:
+                return True
+        return False
+    
+    def _gzip_filename(self, filename):
+        return '%s.gz' % filename
+
+            
+        
 class SiteRenderer:
     def __init__(self, item_name_resolver, data_sources, micro_template_engine, site_config):
         self.inr = item_name_resolver
@@ -604,6 +659,11 @@ class SiteRenderer:
         self.mte = micro_template_engine
         self.config = site_config
         self.navR = NavigationRenderer(self.inr, data_sources, self.mte)
+        if self.config.get_gzip_static():
+            self.otarget = GzipStaticOutputTarget(self.config.get_gzip_static())
+        else:
+            self.otarget = RawOutputTarget()
+            
     
     def render(self):
         self._render_blog()
@@ -796,20 +856,12 @@ class SiteRenderer:
             self._copy_file(media_item.path, filename)
 
     def _write_file(self, filename, content):
-        self._mkpath_for_file(filename)
-        f = open(filename, "wt")
-        f.write(content.encode("utf8"))
-        f.close()
-
-    def _copy_file(self, src, dst):
-        self._mkpath_for_file(dst)
-        shutil.copy(src, dst)
+        encoded_content = content.encode("utf8")
+        self.otarget.write_file(filename, encoded_content)
         
-    def _mkpath_for_file(self, filename):
-        path = os.path.dirname(filename)
-        if not os.path.exists(path):
-            os.makedirs(path)
-
+    def _copy_file(self, src, dst):
+        self.otarget.copy_file(src,dst)
+        
     def make_navigation(self, from_item_name):
         return self.navR.make_navigation(from_item_name)
 
@@ -823,6 +875,7 @@ class SiteConfig:
         self.site_default_author = None
         self.blog_posts_per_page = 10
         self.blog_posts_in_feeds = 20
+        self.gzip_static = []
 
     def load(self):
         parser = ConfigParser()
@@ -833,6 +886,7 @@ class SiteConfig:
         self.site_default_author = parser.get("weavy", "site_default_author")
         self.blog_posts_per_page = parser.getint("weavy", "blog_posts_per_page")
         self.blog_posts_in_feeds = parser.getint("weavy", "blog_posts_in_feeds")
+        self.gzip_static = parser.get("weavy", "gzip_static").split(",")
 
     def get_baseurl(self):
         return self.baseurl
@@ -851,6 +905,9 @@ class SiteConfig:
 
     def get_blog_posts_in_feeds(self):
         return self.blog_posts_in_feeds
+      
+    def get_gzip_static(self):
+        return self.gzip_static
 
 def erase_dir_contents(pathname):
     shutil.rmtree(pathname)
