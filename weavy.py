@@ -16,10 +16,7 @@ import string
 import uuid
 import gzip
 from email import utils as email_utils
-try:
-    from ConfigParser import SafeConfigParser as ConfigParser
-except:
-    from configparser import SafeConfigParser as ConfigParser
+from configparser import ConfigParser
 import markdown
 
 class WeavyError(Exception):
@@ -29,7 +26,7 @@ def log(string):
     sys.stdout.write(string + os.linesep)
 
 def read_file(filename):
-    f = open(filename, "rt")
+    f = open(filename, "rb")
     content = f.read()
     try:
         content_unicode = content.decode("utf8")
@@ -357,15 +354,15 @@ class SiteItem:
         self.name = ItemName.from_parts( site_category, name )
 
     def set_metadata(self, metadata):
-        if metadata.has_key("title"):
+        if "title" in metadata:
             self.title = metadata["title"]
-        if metadata.has_key("last_changed"):
+        if "last_changed" in metadata:
             self.last_changed = parse_datetime(metadata["last_changed"])
-        if metadata.has_key("created"):
+        if "created" in metadata:
             self.created = parse_datetime(metadata["created"])
-        if metadata.has_key("author"):
+        if "author" in metadata:
             self.author = metadata["author"]
-        if metadata.has_key("tags"):
+        if "tags" in metadata:
             tags_str = metadata["tags"]
             self.tags.extend( [ s.strip() for s in tags_str.split(",") ] )
             
@@ -393,14 +390,7 @@ class BlogDataSource:
 
     def get_posts(self):
         post_list = [ v for _,v in self.posts.items() ]
-        def cmp_created(x,y):
-            if x.created < y.created:
-                return -1
-            elif x.created == y.created:
-                return 0
-            else:
-                return 1
-        post_list.sort(cmp = cmp_created, reverse=True)
+        post_list.sort(key = lambda x: x.created, reverse=True)
         return post_list
 
     def __make_post(self, filename):
@@ -712,8 +702,8 @@ class SiteRenderer:
         #print 'num posts: %d' % len(posts)
         #print 'main partition: [0:%d] = %s' % (posts_per_page, main_partition)
         stable_partitions = []
-        num_stable_partitions = num_posts / posts_per_page
-        for i in xrange(num_stable_partitions,0,-1):
+        num_stable_partitions = int(num_posts / posts_per_page)
+        for i in range(num_stable_partitions,0,-1):
             start = num_posts - i * posts_per_page
             end =  num_posts - (i-1) * posts_per_page
             partition = posts[start:end]
