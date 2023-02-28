@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 # This file is part of weavy.
 # Weavy is licensed under the 2-clause BSD license.
